@@ -1,0 +1,4 @@
+RM; 1; 2
+T1_periodica; FF0000; 0; 2; 10; 10; -
+T2_aperiodica; 0000FF; 2; 4; 0; 5; -
+T3_invalida; 00FFFF; 0; 1; -5; 10; -

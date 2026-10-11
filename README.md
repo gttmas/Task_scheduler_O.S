@@ -4,7 +4,7 @@ Descrição do projeto:
 Linguagem:
 Python
 Bibliotecas:
-PyQt6(interface)
+PySide6(interface)
 MatPlotLib(gant)
 PyInstaller(standalone)
 time
