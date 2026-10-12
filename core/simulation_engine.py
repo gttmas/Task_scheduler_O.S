@@ -185,7 +185,8 @@ class SimulationEngine:
             "tcbs": self.tcbs,
             "ready_queue": self.ready_queue,
             "algorithm": self.raw_config.get("algorithm", "RM"),
-            "quantum": self.raw_config.get("quantum", 1)
+            "quantum": self.raw_config.get("quantum", 1),
+            "history": self.history
         }
 
     @property
