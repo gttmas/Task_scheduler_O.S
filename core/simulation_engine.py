@@ -153,10 +153,7 @@ class SimulationEngine:
                         running_task.proximo_release += running_task.periodo
                         running_task.prazo_absoluto = running_task.proximo_release + running_task.prazo_relativo
                         cpu.release_task(running_task)
-<<<<<<< HEAD
                     
-=======
->>>>>>> a13e94b06dd660bd0e64bd5a7d008e4ed09dd1f3
 
 
             # 2. Avança o tempo global
