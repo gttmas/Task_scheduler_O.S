@@ -71,6 +71,11 @@ class SimulationEngine:
             return
 
         old_state = tcb.estado
+
+        # 1. NOVA TRAVA: Tarefa cancelada é irreversível (estado terminal)
+        if old_state == "CANCELADA":
+            return  # Ignora silenciosamente a tentativa de tirar do estado CANCELADA
+
         tcb.estado = new_state
 
         # Se a tarefa estava executando e foi suspensa ou cancelada, precisa liberar a CPU
@@ -82,6 +87,15 @@ class SimulationEngine:
 
         # Gerenciamento da Fila de Prontos
         if new_state == "PRONTA":
+            # 2. NOVO "FAST-FORWARD": Atualiza o release e o prazo caso tenham ficado no passado
+            if tcb.proximo_release < self.current_tick:
+                # Avança os ciclos perdidos até empatar ou ultrapassar o relógio atual
+                while tcb.proximo_release < self.current_tick:
+                    tcb.proximo_release += tcb.periodo
+                
+                # Recalcula o prazo (deadline) com base no novo release
+                tcb.prazo_absoluto = tcb.proximo_release + tcb.prazo_relativo
+
             if tcb not in self.ready_queue:
                 self.ready_queue.append(tcb)
         else:
