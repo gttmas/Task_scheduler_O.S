@@ -153,12 +153,7 @@ class SimulationEngine:
                         running_task.proximo_release += running_task.periodo
                         running_task.prazo_absoluto = running_task.proximo_release + running_task.prazo_relativo
                         cpu.release_task(running_task)
-                    
-                    # Cenário B: Quantum estourou, mas a tarefa não acabou (Preempção)
-                    elif cpu.quantum_counter >= system_quantum:
-                        running_task.estado = "PRONTA"
-                        self.ready_queue.append(running_task) # Volta pra fila de prontas
-                        cpu.release_task(running_task)
+
 
             # 2. Avança o tempo global
             self.current_tick += 1
