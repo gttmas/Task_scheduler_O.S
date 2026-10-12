@@ -1,6 +1,6 @@
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QGroupBox, 
-    QPushButton
+    QPushButton, QScrollArea
 )
 from PySide6.QtCore import Qt
 
@@ -24,13 +24,19 @@ class GanttPage(QWidget):
         gantt_box = QGroupBox("Visualização Gráfica da Execução ao Longo do Tempo")
         gantt_layout = QVBoxLayout(gantt_box)
 
-        # --- AQUI ENTRA O GRÁFICO REAL ---
+        # --- CONFIGURAÇÃO DO GRÁFICO ---
         self.figure = Figure(figsize=(8, 4), dpi=100)
-        self.figure.patch.set_facecolor('#1E1E1E') # Fundo combinando com a interface
+        self.figure.patch.set_facecolor('#1E1E1E') 
         self.ax = self.figure.add_subplot(111)
         self.canvas = FigureCanvasQTAgg(self.figure)
         
-        gantt_layout.addWidget(self.canvas)
+        # --- NOVO: ENVOLVENDO O GRÁFICO EM UMA ÁREA DE ROLAGEM ---
+        self.scroll_area = QScrollArea()
+        self.scroll_area.setWidgetResizable(True)  # Permite que o gráfico cresça e encolha
+        self.scroll_area.setWidget(self.canvas)    # Coloca o canvas dentro do scroll
+        self.scroll_area.setStyleSheet("QScrollArea { border: none; }") # Remove bordas duplas
+        
+        gantt_layout.addWidget(self.scroll_area) # Adiciona o scroll na tela, não o canvas direto
         layout.addWidget(gantt_box, 1)
 
         # --- LEGENDA ---
@@ -70,21 +76,17 @@ class GanttPage(QWidget):
         for spine in self.ax.spines.values():
             spine.set_color('#555555')
             
-        # Linhas pontilhadas verticais como na imagem de referência
         self.ax.grid(True, axis='x', linestyle=':', color='#555555')
         
         historico = state.get("history", [])
         tick_atual = state.get("tick", 0)
         
         # Mapeia as Tarefas para o Eixo Y
-        # Pega as tarefas atuais do estado para saber quantas existem e os IDs
         tcbs_atuais = state.get("tcbs", [])
         task_ids = [tcb.id for tcb in tcbs_atuais]
         num_tasks = len(task_ids)
         
-        # Associa cada ID de tarefa a uma posição no eixo Y (T1 = 1, T2 = 2...)
-        # Para ficar igual à imagem (T1 embaixo, T2 em cima), podemos inverter ou manter a ordem.
-        # Mantendo T1 embaixo:
+        # CORREÇÃO 1: Mantém T1 na parte inferior (base = 1)
         task_y_map = {tid: i + 1 for i, tid in enumerate(task_ids)}
 
         self.ax.set_yticks(range(1, num_tasks + 1))
@@ -96,31 +98,35 @@ class GanttPage(QWidget):
             t = snap["tick"]
             tcbs_snap = snap["tcbs"]
             
-            # Analisa o estado de CADA tarefa naquele instante de tempo
             for tcb in tcbs_snap:
                 if tcb.id not in task_y_map:
+                    continue
+                
+                # CORREÇÃO 2: Se o relógio não chegou no tempo de ingresso, 
+                # a tarefa "não existe" no sistema, então não desenha nada.
+                if t < tcb.ingresso:
                     continue
                     
                 y_pos = task_y_map[tcb.id]
                 cor_tarefa = f"#{tcb.color.lstrip('#')}"
                 
                 if tcb.estado == "EXECUTANDO":
-                    # Bloco colorido (Na CPU)
                     self.ax.barh(y_pos, 1, left=t, color=cor_tarefa, edgecolor="black")
-                    
                 elif tcb.estado == "PRONTA":
-                    # Bloco branco (Fila de Prontas)
                     self.ax.barh(y_pos, 1, left=t, color="#FFFFFF", edgecolor="black")
-                    
-                # Se for "CONCLUIDA" ou outro estado, não desenha nada (fica vazio)
 
         # Configura o eixo X (Linha do Tempo)
         limite_x = max(15, tick_atual + 2)
         self.ax.set_xlim(0, limite_x)
-        
-        # Garante que os números do eixo X pulem de 1 em 1
         self.ax.set_xticks(range(0, limite_x + 1))
         self.ax.set_xlabel("Tempo (Ticks)", color='white')
 
-        # Redesenha efetivamente na tela
+        # Dimensionamento Dinâmico para Habilitar o Scroll
+        largura_minima = max(800, limite_x * 25)
+        self.canvas.setMinimumWidth(largura_minima)
+        
+        altura_minima = max(300, num_tasks * 35)
+        self.canvas.setMinimumHeight(altura_minima)
+        
+        self.figure.tight_layout()
         self.canvas.draw()
