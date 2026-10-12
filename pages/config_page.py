@@ -276,6 +276,38 @@ T3; 3357FF; 0; 8; 20; 16; -"""
         # Emitir sincronização após carregar o arquivo
         self.emit_config_changed()
 
+    def render_state(self, state: dict):
+            """
+            Sincroniza os controles visuais da ConfigPage com o snapshot vindo do motor,
+            bloqueando os sinais temporariamente para não disparar eventos em loop.
+            """
+            if not state:
+                return
+
+            # 1. Sincroniza a Quantidade de CPUs
+            cpus_list = state.get("cpus", [])
+            if hasattr(self, "spin_cpus") and cpus_list:
+                self.spin_cpus.blockSignals(True)
+                self.spin_cpus.setValue(len(cpus_list))
+                self.spin_cpus.blockSignals(False)
+
+            # 2. Sincroniza o Algoritmo
+            algo = state.get("algorithm", "")
+            if hasattr(self, "combo_algorithm") and algo:
+                self.combo_algorithm.blockSignals(True)
+                if "RM" in algo.upper():
+                    self.combo_algorithm.setCurrentIndex(0)
+                elif "EDF" in algo.upper():
+                    self.combo_algorithm.setCurrentIndex(1)
+                self.combo_algorithm.blockSignals(False)
+
+            # 3. Sincroniza o Quantum
+            quantum = state.get("quantum")
+            if hasattr(self, "spin_quantum") and quantum is not None:
+                self.spin_quantum.blockSignals(True)
+                self.spin_quantum.setValue(quantum)
+                self.spin_quantum.blockSignals(False)
+
     def update_tasks_table(self):
         self.table_tasks.setRowCount(len(self.tasks_data))
         for row, task in enumerate(self.tasks_data):

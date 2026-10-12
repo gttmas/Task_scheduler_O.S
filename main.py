@@ -154,15 +154,24 @@ class MainWindow(QMainWindow):
         main_layout.addWidget(bottom_hud)
 
     def on_config_changed(self, config_data: dict):
-        """Inicializa o motor da simulação e envia o estado inicial para a UI."""
-        self.pause_simulation()
-        self.engine.init_from_config(config_data)
-        self.render_engine_state(self.engine.get_current_state())
+            """Diferencia carregamento de novo arquivo de alterações dinâmicas de CPUs."""
+            new_cpu_count = config_data.get("cpus", 1)
+            
+            # Se a quantidade de CPUs mudou com a simulação em andamento, faz ajuste dinâmico
+            if self.engine.cpus and len(self.engine.cpus) != new_cpu_count and self.engine.current_tick > 0:
+                self.engine.set_cpu_count(new_cpu_count)
+            else:
+                # Novo arquivo carregado ou reinício manual
+                self.pause_simulation()
+                self.engine.init_from_config(config_data)
+                
+            self.render_engine_state(self.engine.get_current_state())
 
     def render_engine_state(self, state: dict):
         """Envia o estado atual do motor para renderização em todas as abas."""
         self.page_cpus.render_state(state)
         self.page_tasks.render_state(state)
+        self.page_config.render_state(state)
         self.lbl_timer.setText(f"RELÓGIO GLOBAL (TICK): {state['tick']:04d}")
         self.lbl_status_bar.setText(
             f"Configuração Ativa: {len(state['cpus'])} CPU(s) | {len(state['tcbs'])} Tarefas [{state['algorithm']}]"
