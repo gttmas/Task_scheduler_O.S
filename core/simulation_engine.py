@@ -148,3 +148,19 @@ class SimulationEngine:
             "algorithm": self.raw_config.get("algorithm", "RM"),
             "quantum": self.raw_config.get("quantum", 1)
         }
+
+    @property
+    def is_finished(self) -> bool:
+        """Retorna True se todas as tarefas atingiram o limite de execuções."""
+        if not self.tcbs:
+            return False
+        return all(tcb.execucoes_concluidas >= tcb.limite_execucoes for tcb in self.tcbs)
+
+    def run_full_simulation(self) -> dict:
+        """Roda a simulação inteira em milissegundos até que todas as tarefas concluam."""
+        LIMITE_SEGURANCA = 10000  # Evita loops infinitos em caso de erro de escalonamento
+        
+        while not self.is_finished and self.current_tick < LIMITE_SEGURANCA:
+            self.step_forward()
+            
+        return self.get_current_state()

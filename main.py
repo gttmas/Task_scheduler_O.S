@@ -18,6 +18,7 @@ class MainWindow(QMainWindow):
         # Instância central do Motor da Simulação
         self.engine = SimulationEngine()
         self.is_running = False
+        self.current_config = {}
 
         self.timer = QTimer(self)
         self.timer.setInterval(5000)
@@ -155,6 +156,8 @@ class MainWindow(QMainWindow):
 
     def on_config_changed(self, config_data: dict):
             """Diferencia carregamento de novo arquivo de alterações dinâmicas de CPUs."""
+
+            self.current_config = config_data
             new_cpu_count = config_data.get("cpus", 1)
             
             # Se a quantidade de CPUs mudou com a simulação em andamento, faz ajuste dinâmico
@@ -203,14 +206,31 @@ class MainWindow(QMainWindow):
             self.start_simulation()
 
     def start_simulation(self):
-        self.is_running = True
-        self.btn_play_pause.setText("⏸ Pause")
-        self.btn_play_pause.setStyleSheet("""
-            QPushButton { background-color: #D35400; color: white; border: none; padding: 5px 12px; border-radius: 3px; font-weight: bold; }
-            QPushButton:hover { background-color: #E67E22; }
-        """)
-        self.lbl_status_bar.setText("Simulação em Execução Automática (1 tick a cada 5s)...")
-        self.timer.start()
+        # Lê o modo escolhido na interface (Passo a Passo ou Execução Completa)
+        modo_execucao = self.current_config.get("mode", "STEP")
+        
+        # CAMINHO 1: Execução Completa (Tudo de uma vez)
+        if modo_execucao == "FULL":
+            self.lbl_status_bar.setText("Processando Execução Completa...")
+            
+            # Pede para o motor calcular tudo no backend na mesma hora
+            estado_final = self.engine.run_full_simulation()
+            
+            # Manda as abas desenharem o estado final (último tick)
+            self.render_engine_state(estado_final)
+            
+            self.lbl_status_bar.setText("Simulação Completa Finalizada!")
+            
+        # CAMINHO 2: Passo a Passo (Avanço com o Timer)
+        else:
+            self.is_running = True
+            self.btn_play_pause.setText("⏸ Pause")
+            self.btn_play_pause.setStyleSheet("""
+                QPushButton { background-color: #D35400; color: white; border: none; padding: 5px 12px; border-radius: 3px; font-weight: bold; }
+                QPushButton:hover { background-color: #E67E22; }
+            """)
+            self.lbl_status_bar.setText("Simulação em Execução Automática (1 tick a cada 5s)...")
+            self.timer.start()
 
     def pause_simulation(self):
         self.is_running = False
