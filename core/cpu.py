@@ -13,11 +13,13 @@ class CPU:
         self.status: str = CPU.STATUS_OCIOSA
         self.idle_ticks: int = 0
         self.active_ticks: int = 0
+        self.quantum_counter = 0
 
     def assign_task(self, task) -> None:
         """Aloca uma TCB para executar nesta CPU."""
         self.current_task_id = task.id
         self.status = CPU.STATUS_EXECUTANDO
+        self.quantum_counter = 0
         task.estado = "EXECUTANDO"
         task.cpu_alocada = self.cpu_id
 
@@ -26,6 +28,7 @@ class CPU:
         if task and hasattr(task, 'cpu_alocada'):
             task.cpu_alocada = None
         self.current_task_id = None
+        self.quantum_counter = 0
         self.status = CPU.STATUS_OCIOSA
 
     def turn_off(self) -> None:

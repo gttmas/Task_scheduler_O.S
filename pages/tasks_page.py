@@ -3,12 +3,16 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QGroupBox, 
     QTableWidget, QTableWidgetItem, QHeaderView, QComboBox, QPushButton
 )
+from PySide6.QtCore import Signal  # <-- IMPORTAR Signal
 from PySide6.QtGui import QColor
 from core import TaskControlBlock
 
 
 class TasksPage(QWidget):
-    """Página de Gerenciamento e Exibição de TCBs[cite: 1]."""
+    """Página de Gerenciamento e Exibição de TCBs."""
+
+    # NOVO SINAL: Emite (ID da Tarefa, Novo Estado)
+    manual_state_change = Signal(str, str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -45,18 +49,33 @@ class TasksPage(QWidget):
         self.combo_new_state.addItems(["PRONTA", "SUSPENSA", "CANCELADA"])
         debug_layout.addWidget(self.combo_new_state)
 
-        btn_apply = QPushButton("✏️ Modificar Estado")
-        btn_apply.setStyleSheet("background-color: #007ACC; color: white; font-weight: bold;")
-        debug_layout.addWidget(btn_apply)
-
+        # Botão Modificar Estado
+        self.btn_apply = QPushButton("✏️ Modificar Estado")
+        self.btn_apply.setStyleSheet("background-color: #007ACC; color: white; font-weight: bold;")
+        
+        # CONEXÃO DO BOTÃO
+        self.btn_apply.clicked.connect(self.on_apply_clicked)
+        
+        debug_layout.addWidget(self.btn_apply)
         debug_layout.addStretch(1)
         layout.addWidget(debug_box)
 
+    def on_apply_clicked(self):
+        """Captura os valores do painel e emite o sinal para o Motor."""
+        task_id = self.combo_select_task.currentText()
+        new_state = self.combo_new_state.currentText()
+        if task_id and new_state:
+            self.manual_state_change.emit(task_id, new_state)
+
     def render_state(self, state: Dict[str, Any]):
-        """Atualiza a TCB lendo as instâncias de TaskControlBlock[cite: 1]."""
+        """Atualiza a TCB lendo as instâncias de TaskControlBlock."""
         tcbs: List[TaskControlBlock] = state.get("tcbs", [])
 
         self.table_tcb.setRowCount(len(tcbs))
+        
+        # Salva o texto atual para não perder a seleção do usuário a cada tick
+        current_selection = self.combo_select_task.currentText()
+        self.combo_select_task.blockSignals(True)
         self.combo_select_task.clear()
 
         for row, tcb in enumerate(tcbs):
@@ -67,7 +86,7 @@ class TasksPage(QWidget):
             item_status = QTableWidgetItem(tcb.estado)
             status_colors = {
                 "PRONTA": "#F1C40F", "EXECUTANDO": "#2ECC71",
-                "SUSPENSA": "#E67E22", "CONCLUIDA": "#95A5A6"
+                "SUSPENSA": "#E67E22", "CONCLUIDA": "#95A5A6", "CANCELADA": "#E74C3C"
             }
             item_status.setForeground(QColor(status_colors.get(tcb.estado, "#FFFFFF")))
             self.table_tcb.setItem(row, 1, item_status)
@@ -80,3 +99,9 @@ class TasksPage(QWidget):
             self.table_tcb.setItem(row, 6, QTableWidgetItem(str(tcb.proximo_release)))
             self.table_tcb.setItem(row, 7, QTableWidgetItem(str(tcb.prazo_absoluto)))
             self.table_tcb.setItem(row, 8, QTableWidgetItem(f"{tcb.execucoes_concluidas} / {tcb.limite_execucoes}"))
+
+        # Restaura a seleção anterior se ela ainda existir na lista
+        index = self.combo_select_task.findText(current_selection)
+        if index >= 0:
+            self.combo_select_task.setCurrentIndex(index)
+        self.combo_select_task.blockSignals(False)

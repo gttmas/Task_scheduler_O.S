@@ -64,6 +64,34 @@ class SimulationEngine:
         self._check_releases_and_allocate()
         self.save_snapshot()
 
+    def modify_task_state_manually(self, task_id: str, new_state: str):
+        """Altera manualmente o estado de uma tarefa e ajusta as filas/CPUs associadas."""
+        tcb = next((t for t in self.tcbs if t.id == task_id), None)
+        if not tcb or tcb.estado == new_state:
+            return
+
+        old_state = tcb.estado
+        tcb.estado = new_state
+
+        # Se a tarefa estava executando e foi suspensa ou cancelada, precisa liberar a CPU
+        if old_state == "EXECUTANDO" and new_state in ["SUSPENSA", "CANCELADA"]:
+            for cpu in self.cpus:
+                if cpu.current_task_id == tcb.id:
+                    cpu.release_task(tcb)
+                    break
+
+        # Gerenciamento da Fila de Prontos
+        if new_state == "PRONTA":
+            if tcb not in self.ready_queue:
+                self.ready_queue.append(tcb)
+        else:
+            # Se for Suspensão ou Cancelamento, retira da fila de prontos caso estivesse lá
+            if tcb in self.ready_queue:
+                self.ready_queue.remove(tcb)
+
+        # Salva a ação manual no histórico de Snapshots
+        self.save_snapshot()
+
     def _check_releases_and_allocate(self):
         """Verifica quais tarefas chegaram e aloca em CPUs ociosas (sem executar tempo ainda)."""
         # 1. Novas tarefas que chegaram neste tick
@@ -103,33 +131,44 @@ class SimulationEngine:
         self.ready_queue = [tcb_map[tid] for tid in snapshot["ready_queue_ids"] if tid in tcb_map]
 
     def step_forward(self) -> Dict[str, Any]:
-        """Avança exatamente 1 tick na simulação."""
-        # 1. Executa 1 tick de processamento nas CPUs
-        tcb_map = {tcb.id: tcb for tcb in self.tcbs}
-        for cpu in self.cpus:
-            cpu.tick()
-            if cpu.current_task_id and cpu.current_task_id in tcb_map:
-                running_task = tcb_map[cpu.current_task_id]
-                running_task.duracao_restante -= 1
+            """Avança exatamente 1 tick na simulação, respeitando o Quantum."""
+            system_quantum = self.raw_config.get("quantum", 1)
+            tcb_map = {tcb.id: tcb for tcb in self.tcbs}
+            
+            # 1. Executa 1 tick de processamento nas CPUs
+            for cpu in self.cpus:
+                # cpu.tick() # Dependendo de como era seu tick interno, mas faremos a lógica aqui
+                if cpu.current_task_id and cpu.current_task_id in tcb_map:
+                    running_task = tcb_map[cpu.current_task_id]
+                    
+                    # Consome 1 tick
+                    running_task.duracao_restante -= 1
+                    cpu.quantum_counter += 1
 
-                # Verifica se a tarefa concluiu a execução
-                if running_task.duracao_restante <= 0:
-                    running_task.estado = "CONCLUIDA"
-                    running_task.execucoes_concluidas += 1
-                    running_task.duracao_restante = running_task.duracao_total
-                    running_task.proximo_release += running_task.periodo
-                    running_task.prazo_absoluto = running_task.proximo_release + running_task.prazo_relativo
-                    cpu.release_task(running_task)
+                    # Cenário A: Tarefa concluiu a execução
+                    if running_task.duracao_restante <= 0:
+                        running_task.estado = "CONCLUIDA"
+                        running_task.execucoes_concluidas += 1
+                        running_task.duracao_restante = running_task.duracao_total
+                        running_task.proximo_release += running_task.periodo
+                        running_task.prazo_absoluto = running_task.proximo_release + running_task.prazo_relativo
+                        cpu.release_task(running_task)
+                    
+                    # Cenário B: Quantum estourou, mas a tarefa não acabou (Preempção)
+                    elif cpu.quantum_counter >= system_quantum:
+                        running_task.estado = "PRONTA"
+                        self.ready_queue.append(running_task) # Volta pra fila de prontas
+                        cpu.release_task(running_task)
 
-        # 2. Avança o tempo global
-        self.current_tick += 1
+            # 2. Avança o tempo global
+            self.current_tick += 1
 
-        # 3. Processa releases do novo tick e aloca em CPUs livres
-        self._check_releases_and_allocate()
+            # 3. Processa releases do novo tick e aloca em CPUs livres
+            self._check_releases_and_allocate()
 
-        # 4. Salva o snapshot e retorna o novo estado
-        self.save_snapshot()
-        return self.get_current_state()
+            # 4. Salva o snapshot e retorna o novo estado
+            self.save_snapshot()
+            return self.get_current_state()
 
     def step_back(self) -> Dict[str, Any]:
         """Retrocede 1 tick na simulação utilizando o histórico."""

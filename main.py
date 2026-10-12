@@ -28,6 +28,7 @@ class MainWindow(QMainWindow):
 
         # Conecta alterações de configuração ao reset do motor
         self.page_config.config_changed.connect(self.on_config_changed)
+        self.page_tasks.manual_state_change.connect(self.apply_manual_task_state)
         self.page_config.emit_config_changed()
 
     def init_hud_ui(self):
@@ -153,6 +154,13 @@ class MainWindow(QMainWindow):
         bottom_hud_layout.addWidget(self.lbl_timer)
 
         main_layout.addWidget(bottom_hud)
+
+    def apply_manual_task_state(self, task_id: str, new_state: str):
+        """Recebe o pedido da TasksPage e repassa para o Engine aplicar a modificação."""
+        self.pause_simulation() # Pausa a simulação para não encavalar alterações
+        self.engine.modify_task_state_manually(task_id, new_state)
+        self.render_engine_state(self.engine.get_current_state())
+        self.lbl_status_bar.setText(f"Ação Manual: Tarefa {task_id} alterada para {new_state}.")
 
     def on_config_changed(self, config_data: dict):
             """Diferencia carregamento de novo arquivo de alterações dinâmicas de CPUs."""
