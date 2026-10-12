@@ -107,13 +107,25 @@ class SimulationEngine:
         self.save_snapshot()
 
     def _check_releases_and_allocate(self):
-        """Verifica quais tarefas chegaram e aloca em CPUs ociosas (sem executar tempo ainda)."""
-        # 1. Novas tarefas que chegaram neste tick
+        """Verifica quais tarefas chegaram e aloca em CPUs ociosas."""
+        
+        # 1. Checagem de ingresso na Fila de Prontos
         for tcb in self.tcbs:
-            if tcb.proximo_release == self.current_tick and tcb.execucoes_concluidas < tcb.limite_execucoes:
+            # BLINDAGEM ABSOLUTA: Se estiver suspensa ou cancelada, o motor ignora ela por completo neste tick
+            if tcb.estado in ["SUSPENSA", "CANCELADA"]:
+                continue 
+            
+            # Usar <= (menor ou igual) garante que, mesmo que o tempo passe, ela seja capturada
+            if tcb.proximo_release <= self.current_tick and tcb.execucoes_concluidas < tcb.limite_execucoes:
                 if tcb not in self.ready_queue and tcb.estado != "EXECUTANDO":
                     tcb.estado = "PRONTA"
                     self.ready_queue.append(tcb)
+
+        # 2. Aloca tarefas da Fila de Prontos nas CPUs ociosas
+        for cpu in self.cpus:
+            if cpu.status != CPU.STATUS_EXECUTANDO and self.ready_queue:
+                next_task = self.ready_queue.pop(0)
+                cpu.assign_task(next_task)
 
         # 2. Aloca tarefas da Fila de Prontos nas CPUs ociosas
         for cpu in self.cpus:
