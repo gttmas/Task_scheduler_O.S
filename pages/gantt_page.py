@@ -1,8 +1,13 @@
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QGroupBox, 
-    QFrame, QPushButton
+    QPushButton
 )
 from PySide6.QtCore import Qt
+
+# Importações do Matplotlib
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
+from matplotlib.figure import Figure
 
 
 class GanttPage(QWidget):
@@ -19,21 +24,16 @@ class GanttPage(QWidget):
         gantt_box = QGroupBox("Visualização Gráfica da Execução ao Longo do Tempo")
         gantt_layout = QVBoxLayout(gantt_box)
 
-        self.gantt_canvas_placeholder = QFrame()
-        self.gantt_canvas_placeholder.setStyleSheet("""
-            QFrame {
-                background-color: #1E1E1E; border: 1px dashed #555555; border-radius: 4px;
-            }
-        """)
-        placeholder_layout = QVBoxLayout(self.gantt_canvas_placeholder)
-        self.lbl_info = QLabel("📊 [ Área de Renderização do Gráfico de Gantt (Matplotlib) ]")
-        self.lbl_info.setAlignment(Qt.AlignCenter)
-        self.lbl_info.setStyleSheet("color: #888888; font-size: 14px;")
-        placeholder_layout.addWidget(self.lbl_info)
-
-        gantt_layout.addWidget(self.gantt_canvas_placeholder, 1)
+        # --- AQUI ENTRA O GRÁFICO REAL SUBSTITUINDO O PLACEHOLDER ---
+        self.figure = Figure(figsize=(8, 4), dpi=100)
+        self.figure.patch.set_facecolor('#1E1E1E') # Fundo combinando com a interface
+        self.ax = self.figure.add_subplot(111)
+        self.canvas = FigureCanvasQTAgg(self.figure)
+        
+        gantt_layout.addWidget(self.canvas)
         layout.addWidget(gantt_box, 1)
 
+        # --- MANTÉM A SUA LEGENDA E BOTÃO DE EXPORTAR INTACTOS ---
         bottom_box = QWidget()
         bottom_layout = QHBoxLayout(bottom_box)
         bottom_layout.setContentsMargins(0, 0, 0, 0)
@@ -44,7 +44,7 @@ class GanttPage(QWidget):
         lbl_leg1 = QLabel("█ Executando: Cor da Tarefa")
         lbl_leg2 = QLabel("░ Fila: Ausência de Cor")
         lbl_leg3 = QLabel("▓ Suspensa: Preto Hachurado")
-        lbl_leg4 = QLabel("↓ Ingresso | ↑ Término | ⚠ Perda Deadline | 🎲 Sorteio")
+        lbl_leg4 = QLabel("↓ Ingresso | ↑ Término | ⚠ Perda Deadline")
 
         for lbl in [lbl_leg1, lbl_leg2, lbl_leg3, lbl_leg4]:
             lbl.setStyleSheet("font-size: 11px;")
@@ -58,16 +58,46 @@ class GanttPage(QWidget):
 
         layout.addWidget(bottom_box)
 
-    def update_config(self, config: dict):
-        """Atualiza a prévia do gráfico de Gantt com as dimensões de CPU e Tarefas."""
-        cpus_count = config.get("cpus", 1)
-        tasks = config.get("tasks", [])
-        algo = config.get("algorithm", "RM")
+    def render_state(self, state: dict):
+        """Desenha o gráfico consumindo o histórico salvo pelo Motor."""
+        if not state:
+            return
 
-        info_text = (
-            f"📊 [ Área de Renderização do Gráfico de Gantt (Matplotlib) ]\n\n"
-            f"Eixo Y: {cpus_count} Processador(es) | Eixo X: Linha do Tempo (Ticks)\n"
-            f"Algoritmo: {algo} | Total de Tarefas a Renderizar: {len(tasks)}\n\n"
-            f"(Ao avançar os ticks, a execução das CPUs será desenhada aqui)"
-        )
-        self.lbl_info.setText(info_text)
+        self.ax.clear()
+        
+        # Estilo do gráfico para o tema escuro
+        self.ax.set_facecolor('#1E1E1E')
+        self.ax.tick_params(colors='white')
+        for spine in self.ax.spines.values():
+            spine.set_color('#555555')
+        
+        historico = state.get("history", [])
+        num_cpus = len(state.get("cpus", []))
+        tick_atual = state.get("tick", 0)
+        
+        # Configura o eixo Y (CPUs)
+        self.ax.set_yticks(range(1, num_cpus + 1))
+        self.ax.set_yticklabels([f"CPU {i}" for i in range(1, num_cpus + 1)])
+        self.ax.set_ylim(0.5, num_cpus + 0.5)
+
+        # Varre as 'fotografias' do passado para desenhar os blocos de execução
+        for snap in historico:
+            t = snap["tick"]
+            cpus_snap = snap["cpus"]
+            tcbs_snap = {tcb.id: tcb for tcb in snap["tcbs"]}
+            
+            for cpu in cpus_snap:
+                if cpu.status == "EXECUTANDO" and cpu.current_task_id:
+                    tarefa = tcbs_snap.get(cpu.current_task_id)
+                    if tarefa:
+                        cor = f"#{tarefa.color.lstrip('#')}"
+                        # Desenha o bloco (CPU no eixo y, largura de 1 tick)
+                        self.ax.barh(cpu.cpu_id, 1, left=t, color=cor, edgecolor="black")
+
+        # Configura o eixo X (Linha do Tempo)
+        limite_x = max(10, tick_atual + 2)
+        self.ax.set_xlim(0, limite_x)
+        self.ax.set_xlabel("Tempo (Ticks)", color='white')
+
+        # Redesenha efetivamente na tela
+        self.canvas.draw()

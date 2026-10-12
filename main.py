@@ -175,6 +175,7 @@ class MainWindow(QMainWindow):
         self.page_cpus.render_state(state)
         self.page_tasks.render_state(state)
         self.page_config.render_state(state)
+        self.page_gantt.render_state(state)
         self.lbl_timer.setText(f"RELÓGIO GLOBAL (TICK): {state['tick']:04d}")
         self.lbl_status_bar.setText(
             f"Configuração Ativa: {len(state['cpus'])} CPU(s) | {len(state['tcbs'])} Tarefas [{state['algorithm']}]"
