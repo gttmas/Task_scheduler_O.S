@@ -1,11 +1,14 @@
+from typing import List, Dict, Any
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QGroupBox, 
     QScrollArea, QGridLayout, QFrame
 )
+from core import CPU
 
 
 class CPUsPage(QWidget):
-    """Página de Monitoramento dos Processadores (CPUs) e Ociosidade."""
+    """Página de Monitoramento das CPUs e Ociosidade."""
+    
     def __init__(self, parent=None):
         super().__init__(parent)
         self.init_ui()
@@ -18,8 +21,8 @@ class CPUsPage(QWidget):
         summary_box = QGroupBox("Métricas Globais dos Processadores")
         summary_layout = QHBoxLayout(summary_box)
 
-        self.lbl_active_cpus = QLabel("CPUs Ativas: 0 / 0")
-        self.lbl_global_idle = QLabel("Tempo Total de Ociosidade: 0 ticks")
+        self.lbl_active_cpus = QLabel("CPUs Executando: 0 / 0")
+        self.lbl_global_idle = QLabel("Tempo Total Ocioso/Desligado: 0 ticks")
         self.lbl_global_idle.setStyleSheet("color: #D35400; font-weight: bold;")
 
         summary_layout.addWidget(self.lbl_active_cpus)
@@ -49,37 +52,46 @@ class CPUsPage(QWidget):
 
         layout.addWidget(queue_box)
 
-    def update_config(self, config: dict):
-        """Sincroniza o número de cartões de CPU e a fila inicial com base na configuração."""
-        cpus_count = config.get("cpus", 1)
-        tasks = config.get("tasks", [])
+    def render_state(self, state: Dict[str, Any]):
+        """Renderiza as CPUs e a Fila de Prontos com base no snapshot do motor."""
+        cpus_list: List[CPU] = state.get("cpus", [])
+        ready_queue = state.get("ready_queue", [])
 
-        # 1. Limpar grid anterior de CPUs
         while self.grid_cpus.count():
             item = self.grid_cpus.takeAt(0)
             widget = item.widget()
             if widget:
                 widget.deleteLater()
 
-        # 2. Atualizar cabeçalho de status
-        self.lbl_active_cpus.setText(f"CPUs Ativas: {cpus_count} / {cpus_count}")
+        total_cpus = len(cpus_list)
+        active_cpus = sum(1 for c in cpus_list if c.status == CPU.STATUS_EXECUTANDO)
+        total_idle = sum(c.idle_ticks for c in cpus_list)
 
-        # 3. Recriar cartões para o número exato de CPUs
-        cols = 3 if cpus_count >= 3 else cpus_count
-        for i in range(cpus_count):
-            card = self.create_cpu_card(cpu_id=i + 1, task_name="Ociosa", status="OCIOSA / AGUARDANDO", idle_time=0)
+        self.lbl_active_cpus.setText(f"CPUs Executando: {active_cpus} / {total_cpus}")
+        self.lbl_global_idle.setText(f"Tempo Total Ocioso/Desligado: {total_idle} ticks")
+
+        cols = 3 if total_cpus >= 3 else total_cpus
+        for i, cpu in enumerate(cpus_list):
+            card = self.create_cpu_card(cpu)
             self.grid_cpus.addWidget(card, i // cols, i % cols)
 
-        # 4. Atualizar a Fila de Prontos inicial
-        task_ids = [t["id"] for t in tasks]
-        if task_ids:
-            self.lbl_ready_queue.setText(f"Fila de Prontos: [ {', '.join(task_ids)} ]")
+        if ready_queue:
+            task_ids = [tcb.id for tcb in ready_queue]
+            self.lbl_ready_queue.setText(f"Fila de Prontos ({len(task_ids)}): [ {', '.join(task_ids)} ]")
         else:
-            self.lbl_ready_queue.setText("Fila de Prontos: [ Vazia ]")
+            self.lbl_ready_queue.setText("Fila de Prontos (0): [ Vazia ]")
 
-    def create_cpu_card(self, cpu_id: int, task_name: str, status: str, idle_time: int) -> QFrame:
+    def create_cpu_card(self, cpu: CPU) -> QFrame:
         card = QFrame()
         card.setFrameShape(QFrame.StyledPanel)
+
+        status_colors = {
+            CPU.STATUS_EXECUTANDO: "#2ECC71",
+            CPU.STATUS_OCIOSA:     "#F1C40F",
+            CPU.STATUS_DESLIGADA:  "#E74C3C"
+        }
+        status_color = status_colors.get(cpu.status, "#FFFFFF")
+
         card.setStyleSheet("""
             QFrame {
                 background-color: #2D2D30; border: 1px solid #3F3F46; border-radius: 6px; padding: 10px;
@@ -87,12 +99,14 @@ class CPUsPage(QWidget):
         """)
         card_layout = QVBoxLayout(card)
 
-        lbl_header = QLabel(f"<b>PROCESSADOR CPU #{cpu_id:02d}</b>")
+        lbl_header = QLabel(f"<b>PROCESSADOR CPU #{cpu.cpu_id:02d}</b>")
         lbl_header.setStyleSheet("color: #007ACC; font-size: 14px;")
 
-        lbl_status = QLabel(f"Status: <b style='color: #F1C40F;'>{status}</b>")
-        lbl_task = QLabel(f"Tarefa Atual: <b>{task_name}</b>")
-        lbl_idle = QLabel(f"Tempo Ocioso/Desligado: {idle_time} ticks")
+        lbl_status = QLabel(f"Status: <b style='color: {status_color};'>{cpu.status}</b>")
+        task_id = cpu.current_task_id if cpu.current_task_id else "Nenhuma"
+
+        lbl_task = QLabel(f"Tarefa Atual: <b>{task_id}</b>")
+        lbl_idle = QLabel(f"Tempo Ocioso/Desligado: <b>{cpu.idle_ticks}</b> ticks")
 
         card_layout.addWidget(lbl_header)
         card_layout.addWidget(lbl_status)

@@ -6,6 +6,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, QTimer
 
 from pages import ConfigPage, CPUsPage, TasksPage, GanttPage
+from core import SimulationEngine
 
 
 class MainWindow(QMainWindow):
@@ -13,20 +14,19 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle("Simulador de Escalonamento de Tempo Real - SO Multitarefa")
         self.resize(1150, 750)
-        
-        # Variáveis do Relógio Global e Timer
-        self.current_tick = 0
+
+        # Instância central do Motor da Simulação
+        self.engine = SimulationEngine()
         self.is_running = False
-        
-        # QTimer para controle automático do tempo
+
         self.timer = QTimer(self)
-        self.timer.setInterval(5000)  # 5000 ms = 5 segundos por tick
+        self.timer.setInterval(5000)
         self.timer.timeout.connect(self.advance_tick)
 
         self.init_hud_ui()
-        
-        # Conectar sinal de configuração para sincronizar todas as abas
-        self.page_config.config_changed.connect(self.sync_all_pages)
+
+        # Conecta alterações de configuração ao reset do motor
+        self.page_config.config_changed.connect(self.on_config_changed)
         self.page_config.emit_config_changed()
 
     def init_hud_ui(self):
@@ -36,9 +36,7 @@ class MainWindow(QMainWindow):
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
 
-        # ---------------------------------------------------------------------
-        # 1. HUD SUPERIOR (Controles globais)
-        # ---------------------------------------------------------------------
+        # 1. HUD SUPERIOR
         top_hud = QFrame()
         top_hud.setStyleSheet("background-color: #2D2D30; color: white;")
         top_hud_layout = QHBoxLayout(top_hud)
@@ -66,7 +64,6 @@ class MainWindow(QMainWindow):
             """)
             ctrl_layout.addWidget(btn)
 
-        # Conectar eventos do Timer e Botões
         self.btn_play_pause.clicked.connect(self.toggle_play_pause)
         self.btn_step_fwd.clicked.connect(self.manual_step_forward)
         self.btn_step_back.clicked.connect(self.manual_step_back)
@@ -80,9 +77,7 @@ class MainWindow(QMainWindow):
 
         main_layout.addWidget(top_hud)
 
-        # ---------------------------------------------------------------------
-        # 2. CORPO CENTRAL (Sidebar + QStackedWidget)
-        # ---------------------------------------------------------------------
+        # 2. CORPO CENTRAL
         body_layout = QHBoxLayout()
         body_layout.setContentsMargins(0, 0, 0, 0)
         body_layout.setSpacing(0)
@@ -142,16 +137,14 @@ class MainWindow(QMainWindow):
 
         self.nav_buttons = [btn_nav_config, btn_nav_cpus, btn_nav_tasks, btn_nav_gantt]
 
-        # ---------------------------------------------------------------------
-        # 3. HUD INFERIOR (Status Bar + Relógio Global)
-        # ---------------------------------------------------------------------
+        # 3. HUD INFERIOR
         bottom_hud = QFrame()
         bottom_hud.setStyleSheet("background-color: #007ACC; color: white;")
         bottom_hud_layout = QHBoxLayout(bottom_hud)
         bottom_hud_layout.setContentsMargins(15, 4, 15, 4)
 
-        self.lbl_status_bar = QLabel("Sistema Pronto - Simulação Pausada")
-        self.lbl_timer = QLabel(f"RELÓGIO GLOBAL (TICK): {self.current_tick:04d}")
+        self.lbl_status_bar = QLabel("Sistema Pronto")
+        self.lbl_timer = QLabel("RELÓGIO GLOBAL (TICK): 0000")
         self.lbl_timer.setStyleSheet("font-weight: bold; font-family: monospace;")
 
         bottom_hud_layout.addWidget(self.lbl_status_bar)
@@ -160,18 +153,47 @@ class MainWindow(QMainWindow):
 
         main_layout.addWidget(bottom_hud)
 
-    # -------------------------------------------------------------------------
-    # LÓGICA DO RELÓGIO GLOBAL E TIMER
-    # -------------------------------------------------------------------------
+    def on_config_changed(self, config_data: dict):
+        """Inicializa o motor da simulação e envia o estado inicial para a UI."""
+        self.pause_simulation()
+        self.engine.init_from_config(config_data)
+        self.render_engine_state(self.engine.get_current_state())
+
+    def render_engine_state(self, state: dict):
+        """Envia o estado atual do motor para renderização em todas as abas."""
+        self.page_cpus.render_state(state)
+        self.page_tasks.render_state(state)
+        self.lbl_timer.setText(f"RELÓGIO GLOBAL (TICK): {state['tick']:04d}")
+        self.lbl_status_bar.setText(
+            f"Configuração Ativa: {len(state['cpus'])} CPU(s) | {len(state['tcbs'])} Tarefas [{state['algorithm']}]"
+        )
+
+    def advance_tick(self):
+        """Avança 1 tick no motor e re-renderiza a interface."""
+        state = self.engine.step_forward()
+        self.render_engine_state(state)
+
+    def manual_step_forward(self):
+        self.pause_simulation()
+        self.advance_tick()
+
+    def manual_step_back(self):
+        self.pause_simulation()
+        state = self.engine.step_back()
+        self.render_engine_state(state)
+
+    def reset_simulation(self):
+        self.pause_simulation()
+        self.engine.reset()
+        self.render_engine_state(self.engine.get_current_state())
+
     def toggle_play_pause(self):
-        """Alterna entre executar a simulação automaticamente ou pausá-la[cite: 52]."""
         if self.is_running:
             self.pause_simulation()
         else:
             self.start_simulation()
 
     def start_simulation(self):
-        """Inicia a contagem automática do tempo[cite: 52]."""
         self.is_running = True
         self.btn_play_pause.setText("⏸ Pause")
         self.btn_play_pause.setStyleSheet("""
@@ -182,7 +204,6 @@ class MainWindow(QMainWindow):
         self.timer.start()
 
     def pause_simulation(self):
-        """Pausa a contagem automática[cite: 52]."""
         self.is_running = False
         self.timer.stop()
         self.btn_play_pause.setText("▶ Play")
@@ -190,46 +211,6 @@ class MainWindow(QMainWindow):
             QPushButton { background-color: #3E3E42; color: white; border: none; padding: 5px 12px; border-radius: 3px; font-weight: bold; }
             QPushButton:hover { background-color: #505054; }
         """)
-        self.lbl_status_bar.setText("Simulação Pausada")
-
-    def advance_tick(self):
-        """Avança exatamente 1 tick no sistema."""
-        self.current_tick += 1
-        self.update_timer_display()
-        # Aqui, no futuro, chamaremos: self.engine.step_forward()
-
-    def manual_step_forward(self):
-        """Avança 1 tick manualmente e pausa a simulação automática[cite: 52, 53]."""
-        self.pause_simulation()
-        self.advance_tick()
-
-    def manual_step_back(self):
-        """Retrocede 1 tick manualmente e pausa a simulação automática[cite: 52, 53]."""
-        self.pause_simulation()
-        if self.current_tick > 0:
-            self.current_tick -= 1
-            self.update_timer_display()
-            # Aqui, no futuro, chamaremos: self.engine.step_back()
-
-    def reset_simulation(self):
-        """Reseta o relógio global para 0 e pausa a simulação[cite: 52, 53]."""
-        self.pause_simulation()
-        self.current_tick = 0
-        self.update_timer_display()
-        self.lbl_status_bar.setText("Simulação Reiniciada (Tick 0)")
-
-    def update_timer_display(self):
-        """Atualiza a exibição do relógio no HUD inferior[cite: 52]."""
-        self.lbl_timer.setText(f"RELÓGIO GLOBAL (TICK): {self.current_tick:04d}")
-
-    def sync_all_pages(self, config: dict):
-        """Notifica todas as páginas quando a configuração do arquivo mudar."""
-        self.page_cpus.update_config(config)
-        self.page_tasks.update_config(config)
-        self.page_gantt.update_config(config)
-        self.lbl_status_bar.setText(
-            f"Configuração Ativa: {config['cpus']} CPU(s) | {len(config['tasks'])} Tarefas Periódicas [{config['algorithm']}]"
-        )
 
     def switch_page(self, index: int, title: str, active_btn: QPushButton):
         self.stacked_widget.setCurrentIndex(index)
