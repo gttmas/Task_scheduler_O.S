@@ -1,21 +1,24 @@
 from typing import Dict, Any, List
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QGroupBox, 
-    QTableWidget, QTableWidgetItem, QHeaderView, QComboBox, QPushButton
+    QTableWidget, QTableWidgetItem, QHeaderView, QComboBox, 
+    QPushButton, QLineEdit, QSpinBox
 )
-from PySide6.QtCore import Signal  # <-- IMPORTAR Signal
+from PySide6.QtCore import Signal
 from PySide6.QtGui import QColor
-from core import TaskControlBlock
+from core.tcb import TaskControlBlock
 
 
 class TasksPage(QWidget):
-    """Página de Gerenciamento e Exibição de TCBs."""
+    """Página de Gerenciamento, Exibição e Injeção Dinâmica de TCBs."""
 
-    # NOVO SINAL: Emite (ID da Tarefa, Novo Estado)
-    manual_state_change = Signal(str, str)
+    # Sinais para comunicação com a janela principal/motor
+    manual_state_change = Signal(str, str)  # (task_id, new_state)
+    add_task_requested = Signal(dict)       # (task_data_dict)
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.dynamic_task_count = 1
         self.init_ui()
 
     def init_ui(self):
@@ -23,6 +26,7 @@ class TasksPage(QWidget):
         layout.setContentsMargins(15, 15, 15, 15)
         layout.setSpacing(12)
 
+        # --- TABELA DE TCBs ---
         tcb_box = QGroupBox("Blocos de Controle de Tarefa (TCB)")
         tcb_layout = QVBoxLayout(tcb_box)
 
@@ -37,6 +41,46 @@ class TasksPage(QWidget):
 
         layout.addWidget(tcb_box, 1)
 
+        # --- NOVO PAINEL: ADIÇÃO DINÂMICA DE TAREFAS EM TEMPO DE EXECUÇÃO ---
+        add_box = QGroupBox("➕ Injetar Nova Tarefa em Tempo de Execução")
+        add_layout = QHBoxLayout(add_box)
+
+        add_layout.addWidget(QLabel("ID:"))
+        self.txt_id = QLineEdit("TD1")
+        self.txt_id.setFixedWidth(60)
+        add_layout.addWidget(self.txt_id)
+
+        add_layout.addWidget(QLabel("Duração:"))
+        self.spin_duracao = QSpinBox()
+        self.spin_duracao.setRange(1, 100)
+        self.spin_duracao.setValue(2)
+        add_layout.addWidget(self.spin_duracao)
+
+        add_layout.addWidget(QLabel("Período:"))
+        self.spin_periodo = QSpinBox()
+        self.spin_periodo.setRange(1, 200)
+        self.spin_periodo.setValue(10)
+        add_layout.addWidget(self.spin_periodo)
+
+        add_layout.addWidget(QLabel("Prazo:"))
+        self.spin_prazo = QSpinBox()
+        self.spin_prazo.setRange(1, 200)
+        self.spin_prazo.setValue(4)
+        add_layout.addWidget(self.spin_prazo)
+
+        add_layout.addWidget(QLabel("Cor (Hex):"))
+        self.txt_color = QLineEdit("E74C3C")
+        self.txt_color.setFixedWidth(70)
+        add_layout.addWidget(self.txt_color)
+
+        btn_add = QPushButton("🚀 Injetar Tarefa Agora")
+        btn_add.setStyleSheet("background-color: #27AE60; color: white; font-weight: bold; padding: 6px 12px;")
+        btn_add.clicked.connect(self.on_add_task_clicked)
+        add_layout.addWidget(btn_add)
+
+        layout.addWidget(add_box)
+
+        # --- PAINEL DE DEBUGGER MANUAL ---
         debug_box = QGroupBox("Painel de Modificação Manual (Debugger)")
         debug_layout = QHBoxLayout(debug_box)
 
@@ -49,16 +93,29 @@ class TasksPage(QWidget):
         self.combo_new_state.addItems(["PRONTA", "SUSPENSA", "CANCELADA"])
         debug_layout.addWidget(self.combo_new_state)
 
-        # Botão Modificar Estado
         self.btn_apply = QPushButton("✏️ Modificar Estado")
         self.btn_apply.setStyleSheet("background-color: #007ACC; color: white; font-weight: bold;")
-        
-        # CONEXÃO DO BOTÃO
         self.btn_apply.clicked.connect(self.on_apply_clicked)
         
         debug_layout.addWidget(self.btn_apply)
         debug_layout.addStretch(1)
         layout.addWidget(debug_box)
+
+    def on_add_task_clicked(self):
+        """Coleta os dados do formulário e emite o sinal para o Motor."""
+        task_data = {
+            "id": self.txt_id.text().strip() or f"TD{self.dynamic_task_count}",
+            "color": self.txt_color.text().strip() or "E74C3C",
+            "duracao": self.spin_duracao.value(),
+            "periodo": self.spin_periodo.value(),
+            "prazo": self.spin_prazo.value(),
+            "eventos": "-"
+        }
+        self.dynamic_task_count += 1
+        self.txt_id.setText(f"TD{self.dynamic_task_count}")
+        
+        # Emite sinal para a Janela Principal repassar ao Motor
+        self.add_task_requested.emit(task_data)
 
     def on_apply_clicked(self):
         """Captura os valores do painel e emite o sinal para o Motor."""
@@ -70,10 +127,8 @@ class TasksPage(QWidget):
     def render_state(self, state: Dict[str, Any]):
         """Atualiza a TCB lendo as instâncias de TaskControlBlock."""
         tcbs: List[TaskControlBlock] = state.get("tcbs", [])
-
         self.table_tcb.setRowCount(len(tcbs))
         
-        # Salva o texto atual para não perder a seleção do usuário a cada tick
         current_selection = self.combo_select_task.currentText()
         self.combo_select_task.blockSignals(True)
         self.combo_select_task.clear()
@@ -100,7 +155,6 @@ class TasksPage(QWidget):
             self.table_tcb.setItem(row, 7, QTableWidgetItem(str(tcb.prazo_absoluto)))
             self.table_tcb.setItem(row, 8, QTableWidgetItem(f"{tcb.execucoes_concluidas} / {tcb.limite_execucoes}"))
 
-        # Restaura a seleção anterior se ela ainda existir na lista
         index = self.combo_select_task.findText(current_selection)
         if index >= 0:
             self.combo_select_task.setCurrentIndex(index)

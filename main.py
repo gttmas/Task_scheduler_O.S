@@ -26,9 +26,10 @@ class MainWindow(QMainWindow):
 
         self.init_hud_ui()
 
-        # Conecta alterações de configuração ao reset do motor
+        # Conecta alterações de configuração e ações ao motor
         self.page_config.config_changed.connect(self.on_config_changed)
         self.page_tasks.manual_state_change.connect(self.apply_manual_task_state)
+        self.page_tasks.add_task_requested.connect(self.on_dynamic_task_added)  # <--- SINAL CONECTADO
         self.page_config.emit_config_changed()
 
     def init_hud_ui(self):
@@ -157,26 +158,32 @@ class MainWindow(QMainWindow):
 
     def apply_manual_task_state(self, task_id: str, new_state: str):
         """Recebe o pedido da TasksPage e repassa para o Engine aplicar a modificação."""
-        self.pause_simulation() # Pausa a simulação para não encavalar alterações
+        self.pause_simulation()
         self.engine.modify_task_state_manually(task_id, new_state)
         self.render_engine_state(self.engine.get_current_state())
         self.lbl_status_bar.setText(f"Ação Manual: Tarefa {task_id} alterada para {new_state}.")
 
-    def on_config_changed(self, config_data: dict):
-            """Diferencia carregamento de novo arquivo de alterações dinâmicas de CPUs."""
+    def on_dynamic_task_added(self, task_data: dict):
+        """Injeta a nova tarefa no motor no tick atual e re-renderiza todas as abas."""
+        self.engine.add_task_dynamically(task_data)
+        current_state = self.engine.get_current_state()
+        self.render_engine_state(current_state)
+        
+        task_id = task_data.get("id", "Nova Tarefa")
+        self.lbl_status_bar.setText(f"Tarefa '{task_id}' injetada dinamicamente no Tick {self.engine.current_tick}!")
 
-            self.current_config = config_data
-            new_cpu_count = config_data.get("cpus", 1)
+    def on_config_changed(self, config_data: dict):
+        """Diferencia carregamento de novo arquivo de alterações dinâmicas de CPUs."""
+        self.current_config = config_data
+        new_cpu_count = config_data.get("cpus", 1)
+        
+        if self.engine.cpus and len(self.engine.cpus) != new_cpu_count and self.engine.current_tick > 0:
+            self.engine.set_cpu_count(new_cpu_count)
+        else:
+            self.pause_simulation()
+            self.engine.init_from_config(config_data)
             
-            # Se a quantidade de CPUs mudou com a simulação em andamento, faz ajuste dinâmico
-            if self.engine.cpus and len(self.engine.cpus) != new_cpu_count and self.engine.current_tick > 0:
-                self.engine.set_cpu_count(new_cpu_count)
-            else:
-                # Novo arquivo carregado ou reinício manual
-                self.pause_simulation()
-                self.engine.init_from_config(config_data)
-                
-            self.render_engine_state(self.engine.get_current_state())
+        self.render_engine_state(self.engine.get_current_state())
 
     def render_engine_state(self, state: dict):
         """Envia o estado atual do motor para renderização em todas as abas."""
@@ -215,22 +222,13 @@ class MainWindow(QMainWindow):
             self.start_simulation()
 
     def start_simulation(self):
-        # Lê o modo escolhido na interface (Passo a Passo ou Execução Completa)
         modo_execucao = self.current_config.get("mode", "STEP")
         
-        # CAMINHO 1: Execução Completa (Tudo de uma vez)
         if modo_execucao == "FULL":
             self.lbl_status_bar.setText("Processando Execução Completa...")
-            
-            # Pede para o motor calcular tudo no backend na mesma hora
             estado_final = self.engine.run_full_simulation()
-            
-            # Manda as abas desenharem o estado final (último tick)
             self.render_engine_state(estado_final)
-            
             self.lbl_status_bar.setText("Simulação Completa Finalizada!")
-            
-        # CAMINHO 2: Passo a Passo (Avanço com o Timer)
         else:
             self.is_running = True
             self.btn_play_pause.setText("⏸ Pause")

@@ -65,6 +65,42 @@ class SimulationEngine:
         self._check_releases_and_allocate()
         self.save_snapshot()
 
+    def add_task_dynamically(self, task_data: dict) -> TaskControlBlock:
+        """
+        Injeta uma nova tarefa no sistema durante a simulação (em tempo de execução).
+        Se a nova tarefa tiver maior prioridade que as tarefas atuais, o escalonador
+        irá realizar preempção imediatamente no tick atual.
+        """
+        # Se o ingresso não for especificado ou for do passado, ajusta para o tick atual
+        if "ingresso" not in task_data or int(task_data.get("ingresso", 0)) < self.current_tick:
+            task_data["ingresso"] = self.current_tick
+
+        # Instancia a nova TCB
+        new_tcb = TaskControlBlock(task_data)
+
+        # Ajusta release e prazo absoluto com base no tempo de ingresso
+        new_tcb.proximo_release = new_tcb.ingresso
+        new_tcb.prazo_absoluto = new_tcb.proximo_release + new_tcb.prazo_relativo
+
+        # Evita IDs duplicados
+        existing_ids = {t.id for t in self.tcbs}
+        if new_tcb.id in existing_ids:
+            count = 1
+            while f"{new_tcb.id}_{count}" in existing_ids:
+                count += 1
+            new_tcb.id = f"{new_tcb.id}_{count}"
+
+        # Adiciona à lista global de tarefas do sistema
+        self.tcbs.append(new_tcb)
+
+        # Reavalia o escalonador imediatamente
+        # (se a nova tarefa for mais prioritária, ocorre preempção neste exato instante)
+        self._check_releases_and_allocate()
+
+        # Atualiza o snapshot do histórico
+        self.save_snapshot()
+        return new_tcb
+
     def modify_task_state_manually(self, task_id: str, new_state: str):
         """Altera manualmente o estado de uma tarefa e ajusta as filas/CPUs associadas."""
         tcb = next((t for t in self.tcbs if t.id == task_id), None)
