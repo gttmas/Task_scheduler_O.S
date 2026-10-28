@@ -86,7 +86,6 @@ class GanttPage(QWidget):
         task_ids = [tcb.id for tcb in tcbs_atuais]
         num_tasks = len(task_ids)
         
-        # CORREÇÃO 1: Mantém T1 na parte inferior (base = 1)
         task_y_map = {tid: i + 1 for i, tid in enumerate(task_ids)}
 
         self.ax.set_yticks(range(1, num_tasks + 1))
@@ -97,13 +96,18 @@ class GanttPage(QWidget):
         for snap in historico:
             t = snap["tick"]
             tcbs_snap = snap["tcbs"]
+            cpus_snap = snap["cpus"]
+            
+            # Cria um dicionário rápido para saber qual tarefa está em qual CPU neste tick específico
+            task_to_cpu = {}
+            for cpu in cpus_snap:
+                if cpu.status == "EXECUTANDO" and cpu.current_task_id:
+                    task_to_cpu[cpu.current_task_id] = cpu.cpu_id
             
             for tcb in tcbs_snap:
                 if tcb.id not in task_y_map:
                     continue
                 
-                # CORREÇÃO 2: Se o relógio não chegou no tempo de ingresso, 
-                # a tarefa "não existe" no sistema, então não desenha nada.
                 if t < tcb.ingresso:
                     continue
                     
@@ -111,7 +115,16 @@ class GanttPage(QWidget):
                 cor_tarefa = f"#{tcb.color.lstrip('#')}"
                 
                 if tcb.estado == "EXECUTANDO":
+                    # Desenha o bloco colorido
                     self.ax.barh(y_pos, 1, left=t, color=cor_tarefa, edgecolor="black")
+                    
+                    # Identifica em qual CPU essa tarefa estava rodando e adiciona o texto
+                    cpu_id = task_to_cpu.get(tcb.id)
+                    if cpu_id is not None:
+                        self.ax.text(t + 0.5, y_pos, f"P{cpu_id}", 
+                                     ha='center', va='center', 
+                                     color='white', fontsize=7, fontweight='bold')
+                        
                 elif tcb.estado == "PRONTA":
                     self.ax.barh(y_pos, 1, left=t, color="#FFFFFF", edgecolor="black")
 
