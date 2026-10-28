@@ -1,12 +1,12 @@
-import re
 from typing import List, Dict, Any
 from core.tcb import TaskControlBlock
 from core.cpu import CPU
 from schedulers import run_scheduler
+import re
 
 
 def is_valid_hex_color(color_str: str) -> bool:
-    """Valida se a string é um código Hexadecimal RGB válido (ex: 'FF5733' ou '#FF5733')."""
+    """Verifica se a string é um código hexadecimal de cor válido (ex: FF5733 ou #FF5733)."""
     if not color_str or not isinstance(color_str, str):
         return False
     clean = color_str.lstrip('#').strip()
@@ -25,12 +25,10 @@ class SimulationEngine:
         self.history: List[Dict[str, Any]] = []
 
     def init_from_config(self, config_data: Dict[str, Any]):
-        """Inicializa ou reconfigura o motor."""
         self.raw_config = config_data
         self.reset()
 
     def set_cpu_count(self, new_count: int):
-        """Ajusta o número de CPUs em tempo de execução sem resetar o relógio."""
         current_count = len(self.cpus)
         if new_count == current_count or new_count < 1:
             return
@@ -53,7 +51,6 @@ class SimulationEngine:
             self.history[-1] = self.create_snapshot()
 
     def reset(self):
-        """Reseta o motor para o Tick 0 e realiza a pré-alocação dos ingressos no t=0."""
         self.current_tick = 0
         self.history.clear()
 
@@ -64,12 +61,31 @@ class SimulationEngine:
         self.tcbs = [TaskControlBlock(t) for t in raw_tasks if isinstance(t, dict)]
 
         self.ready_queue = []
-
         self._check_releases_and_allocate()
         self.save_snapshot()
 
-    def add_task_dynamically(self, task_data: dict) -> TaskControlBlock:
-        """Injeta uma nova tarefa no sistema durante a simulação."""
+    def add_task_dynamically(self, task_data: dict) -> tuple[bool, str, TaskControlBlock | None]:
+        """Injeta uma nova tarefa no sistema com validações completas."""
+        try:
+            duracao = int(task_data.get("duracao", 0))
+            periodo = int(task_data.get("periodo", 0))
+            prazo = int(task_data.get("prazo", 0))
+        except (ValueError, TypeError):
+            return False, "Erro: Duração, Período e Prazo devem ser números inteiros.", None
+
+        color = str(task_data.get("color", "")).strip()
+        if not is_valid_hex_color(color):
+            return False, f"Erro: A cor '{color}' é inválida.", None
+
+        if periodo <= 0:
+            return False, f"Erro: O período ({periodo}) deve ser > 0. Tarefas aperiódicas não são permitidas no Projeto A.", None
+
+        if duracao <= 0:
+            return False, f"Erro: A duração ({duracao}) deve ser > 0.", None
+
+        if prazo <= 0:
+            return False, f"Erro: O prazo ({prazo}) deve ser > 0.", None
+
         if "ingresso" not in task_data or int(task_data.get("ingresso", 0)) < self.current_tick:
             task_data["ingresso"] = self.current_tick
 
@@ -87,28 +103,21 @@ class SimulationEngine:
         self.tcbs.append(new_tcb)
         self._check_releases_and_allocate()
         self.save_snapshot()
-        return new_tcb
+        return True, f"Sucesso: Tarefa '{new_tcb.id}' injetada no Tick {self.current_tick}.", new_tcb
 
     def update_task_properties_manually(self, task_id: str, new_params: dict) -> tuple[bool, str]:
-        """
-        Concentra TODAS as validações e travas de alteração em tempo de execução (Requisito 3.1).
-        Garante que apenas dados 100% válidos sejam aplicados à TCB e ao histórico do sistema.
-        """
-        # 1. Teste de existência da tarefa
+        """Concentra TODAS as validações de alteração em tempo de execução (Requisito 3.1)."""
         tcb = next((t for t in self.tcbs if t.id == task_id), None)
         if not tcb:
             return False, f"Tarefa '{task_id}' não foi encontrada no sistema."
 
-        # 2. Teste de estado terminal
         if tcb.estado == "CANCELADA":
             return False, f"Alteração Rejeitada: A tarefa '{task_id}' está CANCELADA e não pode ser modificada."
 
-        # 3. Teste de Cor Hexadecimal RGB
         new_color = str(new_params.get("color", "")).strip()
         if not is_valid_hex_color(new_color):
             return False, f"Alteração Rejeitada: A cor '{new_color}' é inválida. Informe um código Hexadecimal de 6 dígitos (ex: FF5733)."
 
-        # 4. Teste de Conversão Numérica
         try:
             new_duracao = int(new_params.get("duracao", tcb.duracao_total))
             new_periodo = int(new_params.get("periodo", tcb.periodo))
@@ -116,7 +125,6 @@ class SimulationEngine:
         except (ValueError, TypeError):
             return False, "Erro de Validação: Duração, Período e Prazo devem ser números inteiros válidos."
 
-        # 5. Testes Semânticos de Tempo Real (Projeto A)
         if new_periodo <= 0:
             return False, f"Alteração Rejeitada: O período ({new_periodo}) deve ser > 0. Tarefas aperiódicas ou esporádicas só são permitidas no Projeto B."
 
@@ -126,7 +134,6 @@ class SimulationEngine:
         if new_prazo <= 0:
             return False, f"Alteração Rejeitada: O prazo relativo ({new_prazo}) deve ser um valor positivo maior que zero."
 
-        # --- APLICAÇÃO DAS ALTERAÇÕES ---
         tcb.color = new_color.lstrip('#').upper()
         tcb.periodo = new_periodo
         tcb.prazo_relativo = new_prazo
@@ -134,7 +141,6 @@ class SimulationEngine:
         executado = max(0, tcb.duracao_total - tcb.duracao_restante)
         tcb.duracao_total = new_duracao
         tcb.duracao_restante = max(1, new_duracao - executado)
-
         tcb.prazo_absoluto = tcb.proximo_release + tcb.prazo_relativo
 
         self._check_releases_and_allocate()
@@ -143,13 +149,11 @@ class SimulationEngine:
         return True, f"Sucesso: Características da tarefa '{task_id}' atualizadas no Tick {self.current_tick}."
 
     def modify_task_state_manually(self, task_id: str, new_state: str):
-        """Altera manualmente o estado de uma tarefa e ajusta as filas/CPUs associadas."""
         tcb = next((t for t in self.tcbs if t.id == task_id), None)
         if not tcb or tcb.estado == new_state:
             return
 
         old_state = tcb.estado
-
         if old_state == "CANCELADA":
             return
 
@@ -165,7 +169,6 @@ class SimulationEngine:
             if tcb.proximo_release < self.current_tick:
                 while tcb.proximo_release < self.current_tick:
                     tcb.proximo_release += tcb.periodo
-                
                 tcb.prazo_absoluto = tcb.proximo_release + tcb.prazo_relativo
 
             if tcb not in self.ready_queue:
@@ -177,9 +180,7 @@ class SimulationEngine:
         self.save_snapshot()
 
     def _check_releases_and_allocate(self):
-        """Passa o algoritmo escolhido para a função genérica."""
         selected_algorithm = self.raw_config.get("algorithm", "EDF")
-        
         run_scheduler(
             tcbs=self.tcbs,
             cpus=self.cpus,
@@ -189,7 +190,6 @@ class SimulationEngine:
         )
 
     def save_snapshot(self):
-        """Registra a foto exata do estado atual."""
         snapshot = self.create_snapshot()
         if self.current_tick < len(self.history):
             self.history = self.history[:self.current_tick]
@@ -207,12 +207,10 @@ class SimulationEngine:
         self.current_tick = snapshot["tick"]
         self.cpus = [cpu.clone() for cpu in snapshot["cpus"]]
         self.tcbs = [tcb.clone() for tcb in snapshot["tcbs"]]
-
         tcb_map = {tcb.id: tcb for tcb in self.tcbs}
         self.ready_queue = [tcb_map[tid] for tid in snapshot["ready_queue_ids"] if tid in tcb_map]
 
     def step_forward(self) -> Dict[str, Any]:
-        """Avança exatamente 1 tick na simulação, respeitando o Quantum."""
         system_quantum = self.raw_config.get("quantum", 1)
         tcb_map = {tcb.id: tcb for tcb in self.tcbs}
         
@@ -220,7 +218,6 @@ class SimulationEngine:
             cpu.tick()
             if cpu.current_task_id and cpu.current_task_id in tcb_map:
                 running_task = tcb_map[cpu.current_task_id]
-                
                 running_task.duracao_restante -= 1
                 cpu.quantum_counter += 1
 
@@ -238,7 +235,6 @@ class SimulationEngine:
         return self.get_current_state()
 
     def step_back(self) -> Dict[str, Any]:
-        """Retrocede 1 tick na simulação utilizando o histórico."""
         if len(self.history) > 1:
             self.history.pop()
             previous_snapshot = self.history[-1]
@@ -258,16 +254,12 @@ class SimulationEngine:
 
     @property
     def is_finished(self) -> bool:
-        """Retorna True se todas as tarefas atingiram o limite de execuções."""
         if not self.tcbs:
             return False
         return all(tcb.execucoes_concluidas >= tcb.limite_execucoes for tcb in self.tcbs)
 
     def run_full_simulation(self) -> dict:
-        """Roda a simulação inteira em milissegundos até que todas as tarefas concluam."""
         LIMITE_SEGURANCA = 10000
-        
         while not self.is_finished and self.current_tick < LIMITE_SEGURANCA:
             self.step_forward()
-            
         return self.get_current_state()

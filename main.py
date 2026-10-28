@@ -38,7 +38,6 @@ class MainWindow(QMainWindow):
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
 
-        # 1. HUD SUPERIOR
         top_hud = QFrame()
         top_hud.setStyleSheet("background-color: #2D2D30; color: white;")
         top_hud_layout = QHBoxLayout(top_hud)
@@ -79,7 +78,6 @@ class MainWindow(QMainWindow):
 
         main_layout.addWidget(top_hud)
 
-        # 2. CORPO CENTRAL
         body_layout = QHBoxLayout()
         body_layout.setContentsMargins(0, 0, 0, 0)
         body_layout.setSpacing(0)
@@ -139,7 +137,6 @@ class MainWindow(QMainWindow):
 
         self.nav_buttons = [btn_nav_config, btn_nav_cpus, btn_nav_tasks, btn_nav_gantt]
 
-        # 3. HUD INFERIOR
         bottom_hud = QFrame()
         bottom_hud.setStyleSheet("background-color: #007ACC; color: white;")
         bottom_hud_layout = QHBoxLayout(bottom_hud)
@@ -156,47 +153,36 @@ class MainWindow(QMainWindow):
         main_layout.addWidget(bottom_hud)
 
     def apply_manual_task_state(self, task_id: str, new_state: str):
-        """Recebe o pedido da TasksPage e repassa para o Engine aplicar a modificação."""
         self.pause_simulation()
         self.engine.modify_task_state_manually(task_id, new_state)
         self.render_engine_state(self.engine.get_current_state())
         self.lbl_status_bar.setText(f"Ação Manual: Tarefa {task_id} alterada para {new_state}.")
 
     def on_dynamic_task_added(self, task_data: dict):
-        """Injeta a nova tarefa no motor no tick atual e re-renderiza todas as abas."""
-        self.engine.add_task_dynamically(task_data)
-        current_state = self.engine.get_current_state()
-        self.render_engine_state(current_state)
+        self.pause_simulation()
+        success, msg, _ = self.engine.add_task_dynamically(task_data)
         
-        task_id = task_data.get("id", "Nova Tarefa")
-        self.lbl_status_bar.setText(f"Tarefa '{task_id}' injetada dinamicamente no Tick {self.engine.current_tick}!")
+        self.render_engine_state(self.engine.get_current_state())
+        log_level = "SUCCESS" if success else "ERROR"
+        self.page_config.log_message(msg, log_level)
+        self.lbl_status_bar.setText(msg)
+        
+        if not success:
+            QMessageBox.warning(self, "Injeção Rejeitada", msg, QMessageBox.Ok)
 
     def apply_task_properties_change(self, old_task_id: str, new_params: dict):
-        """Aplica a alteração de características no motor e relata o resultado ao usuário (Requisito 3.1)."""
         self.pause_simulation()
         success, msg = self.engine.update_task_properties_manually(old_task_id, new_params)
         
-        # 1. Re-renderiza o estado em todas as abas
         self.render_engine_state(self.engine.get_current_state())
-        
-        # 2. Registra no console de logs da ConfigPage
         log_level = "SUCCESS" if success else "ERROR"
         self.page_config.log_message(msg, log_level)
-        
-        # 3. Atualiza a barra de status inferior
         self.lbl_status_bar.setText(msg)
         
-        # 4. Se a alteração foi rejeitada, abre a Janela Pop-up de Alerta
         if not success:
-            QMessageBox.warning(
-                self,
-                "Alteração Rejeitada (Requisito 3.1)",
-                msg,
-                QMessageBox.Ok
-            )
+            QMessageBox.warning(self, "Alteração Rejeitada (Requisito 3.1)", msg, QMessageBox.Ok)
 
     def on_config_changed(self, config_data: dict):
-        """Diferencia carregamento de novo arquivo de alterações dinâmicas de CPUs."""
         self.current_config = config_data
         new_cpu_count = config_data.get("cpus", 1)
         
@@ -209,7 +195,6 @@ class MainWindow(QMainWindow):
         self.render_engine_state(self.engine.get_current_state())
 
     def render_engine_state(self, state: dict):
-        """Envia o estado atual do motor para renderização em todas as abas."""
         self.page_cpus.render_state(state)
         self.page_tasks.render_state(state)
         self.page_config.render_state(state)
@@ -220,7 +205,6 @@ class MainWindow(QMainWindow):
         )
 
     def advance_tick(self):
-        """Avança 1 tick no motor e re-renderiza a interface."""
         state = self.engine.step_forward()
         self.render_engine_state(state)
 

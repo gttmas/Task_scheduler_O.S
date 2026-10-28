@@ -52,19 +52,19 @@ class TasksPage(QWidget):
 
         add_layout.addWidget(QLabel("Duração:"))
         self.spin_duracao = QSpinBox()
-        self.spin_duracao.setRange(1, 100)
+        self.spin_duracao.setRange(-10, 100)  # Permite <= 0 para testar a rejeição
         self.spin_duracao.setValue(2)
         add_layout.addWidget(self.spin_duracao)
 
         add_layout.addWidget(QLabel("Período:"))
         self.spin_periodo = QSpinBox()
-        self.spin_periodo.setRange(1, 200)
+        self.spin_periodo.setRange(-10, 200)  # Permite <= 0 para testar a rejeição
         self.spin_periodo.setValue(10)
         add_layout.addWidget(self.spin_periodo)
 
         add_layout.addWidget(QLabel("Prazo:"))
         self.spin_prazo = QSpinBox()
-        self.spin_prazo.setRange(1, 200)
+        self.spin_prazo.setRange(-10, 200)  # Permite <= 0 para testar a rejeição
         self.spin_prazo.setValue(4)
         add_layout.addWidget(self.spin_prazo)
 
@@ -79,7 +79,7 @@ class TasksPage(QWidget):
         add_layout.addWidget(btn_add)
         layout.addWidget(add_box)
 
-        # --- 3. ALTERAR CARACTERÍSTICAS DA TAREFA (REQUISITO 3.1 - ID FIXO) ---
+        # --- 3. ALTERAR CARACTERÍSTICAS DA TAREFA (REQUISITO 3.1) ---
         edit_box = QGroupBox("✏️ Alterar Características da Tarefa (Requisito 3.1)")
         edit_layout = QHBoxLayout(edit_box)
 
@@ -90,17 +90,17 @@ class TasksPage(QWidget):
 
         edit_layout.addWidget(QLabel("Duração:"))
         self.spin_edit_duracao = QSpinBox()
-        self.spin_edit_duracao.setRange(1, 200)
+        self.spin_edit_duracao.setRange(-10, 200)  # 🟢 FIX: Permite <= 0 para testar validação de duração
         edit_layout.addWidget(self.spin_edit_duracao)
 
         edit_layout.addWidget(QLabel("Período:"))
         self.spin_edit_periodo = QSpinBox()
-        self.spin_edit_periodo.setRange(-10, 200)
+        self.spin_edit_periodo.setRange(-10, 200)  # Permite <= 0 para testar validação de período
         edit_layout.addWidget(self.spin_edit_periodo)
 
         edit_layout.addWidget(QLabel("Prazo:"))
         self.spin_edit_prazo = QSpinBox()
-        self.spin_edit_prazo.setRange(1, 200)
+        self.spin_edit_prazo.setRange(-10, 200)    # 🟢 FIX: Permite <= 0 para testar validação de prazo
         edit_layout.addWidget(self.spin_edit_prazo)
 
         edit_layout.addWidget(QLabel("Cor (Hex):"))
@@ -135,7 +135,6 @@ class TasksPage(QWidget):
         layout.addWidget(debug_box)
 
     def on_add_task_clicked(self):
-        """Coleta dados do formulário e injeta nova tarefa."""
         task_data = {
             "id": self.txt_id.text().strip() or f"TD{self.dynamic_task_count}",
             "color": self.txt_color.text().strip() or "E74C3C",
@@ -149,7 +148,6 @@ class TasksPage(QWidget):
         self.add_task_requested.emit(task_data)
 
     def on_edit_task_selected(self):
-        """Preenche os campos de edição com os valores atuais da tarefa selecionada."""
         selected_id = self.combo_edit_task.currentText()
         tcb = next((t for t in self.current_tcbs if t.id == selected_id), None)
         if tcb:
@@ -159,7 +157,6 @@ class TasksPage(QWidget):
             self.spin_edit_prazo.setValue(tcb.prazo_relativo)
 
     def on_save_edit_clicked(self):
-        """Emite sinal para atualizar Duração, Período, Prazo e Cor mantendo o ID fixo."""
         task_id = self.combo_edit_task.currentText()
         if not task_id:
             return
@@ -173,14 +170,12 @@ class TasksPage(QWidget):
         self.task_properties_changed.emit(task_id, new_params)
 
     def on_apply_clicked(self):
-        """Emite sinal para alteração de estado manual."""
         task_id = self.combo_select_task.currentText()
         new_state = self.combo_new_state.currentText()
         if task_id and new_state:
             self.manual_state_change.emit(task_id, new_state)
 
     def render_state(self, state: Dict[str, Any]):
-        """Renderiza TCBs e atualiza as caixas de seleção."""
         tcbs: List[TaskControlBlock] = state.get("tcbs", [])
         self.current_tcbs = tcbs
         self.table_tcb.setRowCount(len(tcbs))
