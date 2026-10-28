@@ -9,9 +9,9 @@ from PySide6.QtGui import QColor
 
 
 class ConfigPage(QWidget):
-    """Página de Configuração e Carga de Arquivos com Emissão de Sinais."""
+    """Página de Configuração e Carga de Ficheiros com Emissão de Sinais."""
     
-    # Sinal emitido sempre que qualquer configuração/arquivo mudar
+    # Sinal emitido sempre que qualquer configuração/ficheiro mudar
     config_changed = Signal(dict)
 
     def __init__(self, parent=None):
@@ -27,7 +27,7 @@ class ConfigPage(QWidget):
         main_layout.setSpacing(12)
         main_layout.setContentsMargins(15, 15, 15, 15)
 
-        # 1. BLOCO DE ARQUIVO
+        # 1. BLOCO DE FICHEIRO
         file_box = QGroupBox("Arquivo de Configuração")
         file_layout = QHBoxLayout(file_box)
 
@@ -198,14 +198,18 @@ T3; 3357FF; 0; 8; 20; 16; -"""
             self.log_message("Erro: O arquivo de configuração está vazio.", "ERROR")
             return
 
+        # --- VALIDAÇÃO DO REQUISITO 3.3.1 (MÍNIMO DE 2 LINHAS) ---
+        if len(lines) < 2:
+            self.log_message("Erro [Requisito 3.3.1]: O arquivo de configuração deve ter PELO MENOS 2 LINHAS (Linha 1: Parâmetros do SO, Linhas seguintes: Tarefas).", "ERROR")
+            return
+
         line_1 = lines[0].rstrip(';')
         parts_1 = [p.strip() for p in line_1.split(';')]
 
         if len(parts_1) < 3:
-            self.log_message(f"Erro na Linha 1: Parâmetros globais incompletos. Esperado 'algoritmo; quantum; cpus'.", "ERROR")
+            self.log_message("Erro na Linha 1: Parâmetros globais incompletos. Esperado 'algoritmo; quantum; cpus'.", "ERROR")
             return
 
-        # Desconectar temporariamente para não emitir múltiplos sinais enquanto altera a UI
         self.spin_cpus.blockSignals(True)
         self.combo_algorithm.blockSignals(True)
         self.spin_quantum.blockSignals(True)
@@ -221,8 +225,18 @@ T3; 3357FF; 0; 8; 20; 16; -"""
             self.combo_algorithm.setCurrentIndex(0)
 
         try:
-            self.spin_quantum.setValue(max(1, int(quantum_raw)))
-            self.spin_cpus.setValue(max(1, int(cpus_raw)))
+            val_quantum = int(quantum_raw)
+            if val_quantum < 1:
+                self.log_message(f"Aviso: Quantum ({val_quantum}) deve ser >= 1. Ajustado para 1.", "WARNING")
+                val_quantum = 1
+            self.spin_quantum.setValue(val_quantum)
+
+            val_cpus = int(cpus_raw)
+            if val_cpus < 1:
+                self.log_message(f"Aviso: Quantidade de CPUs ({val_cpus}) deve ser >= 1. Ajustado para 1 CPU.", "WARNING")
+                val_cpus = 1
+            self.spin_cpus.setValue(val_cpus)
+
         except ValueError:
             self.log_message("Erro na Linha 1: Quantum ou CPUs não correspondem a valores numéricos válidos.", "ERROR")
             self.spin_cpus.blockSignals(False)
@@ -236,13 +250,15 @@ T3; 3357FF; 0; 8; 20; 16; -"""
 
         parsed_tasks = []
         ignored_aperiodic_count = 0
+        error_count = 0
 
         for line_num, line in enumerate(lines[1:], start=2):
             clean_line = line.rstrip(';')
             parts = [p.strip() for p in clean_line.split(';')]
 
             if len(parts) < 6:
-                self.log_message(f"Aviso [Linha {line_num}]: Formato inválido. Linha ignorada: '{line}'", "WARNING")
+                self.log_message(f"Aviso [Linha {line_num}]: Formato inválido (menos de 6 campos). Linha ignorada: '{line}'", "WARNING")
+                error_count += 1
                 continue
 
             t_id, t_color = parts[0], parts[1]
@@ -253,11 +269,17 @@ T3; 3357FF; 0; 8; 20; 16; -"""
                 t_eventos = parts[6] if len(parts) > 6 else "-"
             except ValueError:
                 self.log_message(f"Erro [Linha {line_num}]: Parâmetros numéricos inválidos na tarefa '{t_id}'.", "ERROR")
+                error_count += 1
                 continue
 
-            if t_periodo <= 0:
+            # --- VALIDAÇÕES DE PERÍODO (REQUISITO 3.3 E 4.4) ---
+            if t_periodo == 0:
                 ignored_aperiodic_count += 1
-                self.log_message(f"Aviso [Projeto A]: A tarefa '{t_id}' é Aperiódica (Período: {t_periodo}) e foi IGNORADA.", "WARNING")
+                self.log_message(f"Aviso [Projeto A]: A tarefa '{t_id}' é Aperiódica (Período: 0) e foi IGNORADA.", "WARNING")
+                continue
+            elif t_periodo < 0:
+                error_count += 1
+                self.log_message(f"Erro [Linha {line_num}]: Período negativo ({t_periodo}) na tarefa '{t_id}' é inválido (Requisito 3.3).", "ERROR")
                 continue
 
             parsed_tasks.append({
@@ -268,45 +290,41 @@ T3; 3357FF; 0; 8; 20; 16; -"""
         self.tasks_data = parsed_tasks
         self.update_tasks_table()
 
-        self.log_message(f"Sucesso: Configuração de '{source_name}' carregada com sucesso!", "SUCCESS")
-        self.log_message(f"Resumo: {len(self.tasks_data)} tarefas periódicas ativas carregadas.", "INFO")
+        if len(self.tasks_data) == 0:
+            self.log_message("Aviso [Requisito 3.3.1]: Nenhuma tarefa válida foi encontrada/carregada do arquivo.", "WARNING")
+        else:
+            self.log_message(f"Sucesso: Configuração de '{source_name}' carregada com sucesso!", "SUCCESS")
+            self.log_message(f"Resumo: {len(self.tasks_data)} tarefas periódicas ativas carregadas.", "INFO")
+
         if ignored_aperiodic_count > 0:
             self.log_message(f"Nota: Total de {ignored_aperiodic_count} tarefa(s) aperiódica(s) desconsiderada(s).", "WARNING")
 
-        # Emitir sincronização após carregar o arquivo
         self.emit_config_changed()
 
     def render_state(self, state: dict):
-            """
-            Sincroniza os controles visuais da ConfigPage com o snapshot vindo do motor,
-            bloqueando os sinais temporariamente para não disparar eventos em loop.
-            """
-            if not state:
-                return
+        if not state:
+            return
 
-            # 1. Sincroniza a Quantidade de CPUs
-            cpus_list = state.get("cpus", [])
-            if hasattr(self, "spin_cpus") and cpus_list:
-                self.spin_cpus.blockSignals(True)
-                self.spin_cpus.setValue(len(cpus_list))
-                self.spin_cpus.blockSignals(False)
+        cpus_list = state.get("cpus", [])
+        if hasattr(self, "spin_cpus") and cpus_list:
+            self.spin_cpus.blockSignals(True)
+            self.spin_cpus.setValue(len(cpus_list))
+            self.spin_cpus.blockSignals(False)
 
-            # 2. Sincroniza o Algoritmo
-            algo = state.get("algorithm", "")
-            if hasattr(self, "combo_algorithm") and algo:
-                self.combo_algorithm.blockSignals(True)
-                if "RM" in algo.upper():
-                    self.combo_algorithm.setCurrentIndex(0)
-                elif "EDF" in algo.upper():
-                    self.combo_algorithm.setCurrentIndex(1)
-                self.combo_algorithm.blockSignals(False)
+        algo = state.get("algorithm", "")
+        if hasattr(self, "combo_algorithm") and algo:
+            self.combo_algorithm.blockSignals(True)
+            if "RM" in algo.upper():
+                self.combo_algorithm.setCurrentIndex(0)
+            elif "EDF" in algo.upper():
+                self.combo_algorithm.setCurrentIndex(1)
+            self.combo_algorithm.blockSignals(False)
 
-            # 3. Sincroniza o Quantum
-            quantum = state.get("quantum")
-            if hasattr(self, "spin_quantum") and quantum is not None:
-                self.spin_quantum.blockSignals(True)
-                self.spin_quantum.setValue(quantum)
-                self.spin_quantum.blockSignals(False)
+        quantum = state.get("quantum")
+        if hasattr(self, "spin_quantum") and quantum is not None:
+            self.spin_quantum.blockSignals(True)
+            self.spin_quantum.setValue(quantum)
+            self.spin_quantum.blockSignals(False)
 
     def update_tasks_table(self):
         self.table_tasks.setRowCount(len(self.tasks_data))
@@ -320,7 +338,7 @@ T3; 3357FF; 0; 8; 20; 16; -"""
             self.table_tasks.setItem(row, 1, item_color)
 
             self.table_tasks.setItem(row, 2, QTableWidgetItem(str(task["ingresso"])))
-            self.table_tasks.setItem(row, 3, QTableWidgetItem(str(task["duracao"])))
+            self.table_tasks.setItem(row, 3, QTableWidgetItem(str(task["duracao"])))                                                                                        
             self.table_tasks.setItem(row, 4, QTableWidgetItem(str(task["periodo"])))
             self.table_tasks.setItem(row, 5, QTableWidgetItem(str(task["prazo"])))
-            self.table_tasks.setItem(row, 6, QTableWidgetItem(str(task["eventos"])))
+            self.table_tasks.setItem(row, 6, QTableWidgetItem(str(task["eventos"])))                                                                                                                                        
