@@ -1,7 +1,7 @@
 import sys
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
-    QLabel, QPushButton, QFrame, QStackedWidget
+    QLabel, QPushButton, QFrame, QStackedWidget, QMessageBox
 )
 from PySide6.QtCore import Qt, QTimer
 
@@ -15,7 +15,6 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Simulador de Escalonamento de Tempo Real - SO Multitarefa")
         self.resize(1150, 750)
 
-        # Instância central do Motor da Simulação
         self.engine = SimulationEngine()
         self.is_running = False
         self.current_config = {}
@@ -26,10 +25,10 @@ class MainWindow(QMainWindow):
 
         self.init_hud_ui()
 
-        # Conecta alterações de configuração e ações ao motor
         self.page_config.config_changed.connect(self.on_config_changed)
         self.page_tasks.manual_state_change.connect(self.apply_manual_task_state)
-        self.page_tasks.add_task_requested.connect(self.on_dynamic_task_added)  # <--- SINAL CONECTADO
+        self.page_tasks.add_task_requested.connect(self.on_dynamic_task_added)  
+        self.page_tasks.task_properties_changed.connect(self.apply_task_properties_change)  
         self.page_config.emit_config_changed()
 
     def init_hud_ui(self):
@@ -172,6 +171,30 @@ class MainWindow(QMainWindow):
         task_id = task_data.get("id", "Nova Tarefa")
         self.lbl_status_bar.setText(f"Tarefa '{task_id}' injetada dinamicamente no Tick {self.engine.current_tick}!")
 
+    def apply_task_properties_change(self, old_task_id: str, new_params: dict):
+        """Aplica a alteração de características no motor e relata o resultado ao usuário (Requisito 3.1)."""
+        self.pause_simulation()
+        success, msg = self.engine.update_task_properties_manually(old_task_id, new_params)
+        
+        # 1. Re-renderiza o estado em todas as abas
+        self.render_engine_state(self.engine.get_current_state())
+        
+        # 2. Registra no console de logs da ConfigPage
+        log_level = "SUCCESS" if success else "ERROR"
+        self.page_config.log_message(msg, log_level)
+        
+        # 3. Atualiza a barra de status inferior
+        self.lbl_status_bar.setText(msg)
+        
+        # 4. Se a alteração foi rejeitada, abre a Janela Pop-up de Alerta
+        if not success:
+            QMessageBox.warning(
+                self,
+                "Alteração Rejeitada (Requisito 3.1)",
+                msg,
+                QMessageBox.Ok
+            )
+
     def on_config_changed(self, config_data: dict):
         """Diferencia carregamento de novo arquivo de alterações dinâmicas de CPUs."""
         self.current_config = config_data
@@ -236,7 +259,7 @@ class MainWindow(QMainWindow):
                 QPushButton { background-color: #D35400; color: white; border: none; padding: 5px 12px; border-radius: 3px; font-weight: bold; }
                 QPushButton:hover { background-color: #E67E22; }
             """)
-            self.lbl_status_bar.setText("Simulação em Execução Automática (1 tick a cada 5s)...")
+            self.lbl_status_bar.setText("Simulação em Execução Automática...")
             self.timer.start()
 
     def pause_simulation(self):
