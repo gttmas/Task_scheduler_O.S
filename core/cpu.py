@@ -4,13 +4,12 @@ from typing import Optional
 class CPU:
     """Representa uma unidade de processamento (Core)."""
     STATUS_EXECUTANDO = "EXECUTANDO"
-    STATUS_OCIOSA = "OCIOSA"
     STATUS_DESLIGADA = "DESLIGADA"
 
     def __init__(self, cpu_id: int):
         self.cpu_id: int = cpu_id
         self.current_task_id: Optional[str] = None
-        self.status: str = CPU.STATUS_OCIOSA
+        self.status: str = CPU.STATUS_DESLIGADA
         self.idle_ticks: int = 0
         self.active_ticks: int = 0
         self.quantum_counter = 0
@@ -24,16 +23,13 @@ class CPU:
         task.cpu_alocada = self.cpu_id
 
     def release_task(self, task=None) -> None:
-        """Desaloca a tarefa atual e define a CPU como OCIOSA."""
+        """Desaloca a tarefa atual e define a CPU como DESLIGADA."""
         if task and hasattr(task, 'cpu_alocada'):
             task.cpu_alocada = None
         self.current_task_id = None
         self.quantum_counter = 0
-        self.status = CPU.STATUS_OCIOSA
-
-    def turn_off(self) -> None:
-        self.release_task()
         self.status = CPU.STATUS_DESLIGADA
+
 
     def tick(self) -> None:
         """Contabiliza a atividade ou ociosidade no tick corrente."""

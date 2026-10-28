@@ -185,7 +185,7 @@ class SimulationEngine:
             
             # 1. Executa 1 tick de processamento nas CPUs
             for cpu in self.cpus:
-                # cpu.tick() # Dependendo de como era seu tick interno, mas faremos a lógica aqui
+                cpu.tick()
                 if cpu.current_task_id and cpu.current_task_id in tcb_map:
                     running_task = tcb_map[cpu.current_task_id]
                     

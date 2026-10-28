@@ -87,8 +87,7 @@ class CPUsPage(QWidget):
 
         status_colors = {
             CPU.STATUS_EXECUTANDO: "#2ECC71",
-            CPU.STATUS_OCIOSA:     "#F1C40F",
-            CPU.STATUS_DESLIGADA:  "#E74C3C"
+            CPU.STATUS_DESLIGADA:     "#F1C40F",
         }
         status_color = status_colors.get(cpu.status, "#FFFFFF")
 

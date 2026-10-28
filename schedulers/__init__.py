@@ -42,7 +42,7 @@ def run_scheduler(
 
     # 4. Aloca tarefas da fila nas CPUs que estiverem OCIOSAS
     for cpu in cpus:
-        if cpu.status == CPU.STATUS_OCIOSA and ready_queue:
+        if cpu.status == CPU.STATUS_DESLIGADA and ready_queue:
             highest_priority_task = ready_queue.pop(0)
             cpu.assign_task(highest_priority_task)
 
