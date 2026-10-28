@@ -49,9 +49,10 @@ class GanttPage(QWidget):
 
         lbl_leg1 = QLabel("█ Executando (Na CPU)")
         lbl_leg2 = QLabel("⬜ Fila de Prontas (Aguardando)")
-        lbl_leg3 = QLabel("(Vazio) Concluída ou Não Iniciada")
+        lbl_leg3 = QLabel("▧ Suspensa") # NOVO ITEM
+        lbl_leg4 = QLabel("(Vazio) Concluída ou Não Iniciada")
 
-        for lbl in [lbl_leg1, lbl_leg2, lbl_leg3]:
+        for lbl in [lbl_leg1, lbl_leg2, lbl_leg3, lbl_leg4]:
             lbl.setStyleSheet("font-size: 11px;")
             legend_layout.addWidget(lbl)
 
@@ -127,6 +128,10 @@ class GanttPage(QWidget):
                         
                 elif tcb.estado == "PRONTA":
                     self.ax.barh(y_pos, 1, left=t, color="#FFFFFF", edgecolor="black")
+
+                elif tcb.estado == "SUSPENSA":
+                    # Usa hatch="///" para linhas diagonais e uma cor de fundo neutra
+                    self.ax.barh(y_pos, 1, left=t, color="#555555", edgecolor="black", hatch="///")
 
         # Configura o eixo X (Linha do Tempo)
         limite_x = max(15, tick_atual + 2)
