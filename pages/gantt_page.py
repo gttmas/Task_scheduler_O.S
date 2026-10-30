@@ -1,6 +1,6 @@
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QGroupBox, 
-    QPushButton, QScrollArea
+    QPushButton, QScrollArea, QFileDialog, QMessageBox
 )
 from PySide6.QtCore import Qt
 
@@ -76,6 +76,9 @@ class GanttPage(QWidget):
 
         btn_export = QPushButton("💾 Exportar Imagem do Gantt (PNG)")
         btn_export.setStyleSheet("background-color: #27AE60; color: white; font-weight: bold; padding: 10px; min-width: 200px;")
+
+        btn_export.clicked.connect(self.exportar_imagem)
+
         bottom_layout.addWidget(btn_export)
 
         layout.addWidget(bottom_box)
@@ -101,6 +104,21 @@ class GanttPage(QWidget):
         tcbs_atuais = state.get("tcbs", [])
         task_ids = [tcb.id for tcb in tcbs_atuais]
         num_tasks = len(task_ids)
+
+        # --- EXTRAÇÃO SEGURA PARA EXPORTAÇÃO ---
+        # Salva apenas strings e inteiros para não prender os objetos do simulador
+        self._export_data = {
+            "tick": tick_atual,
+            "task_ids": task_ids,
+            "history_primitives": []
+        }
+        for snap in historico:
+            self._export_data["history_primitives"].append({
+                "tick": snap["tick"],
+                "cpus": [{"status": c.status, "current_task_id": c.current_task_id, "cpu_id": c.cpu_id} for c in snap["cpus"]],
+                "tcbs": [{"id": t.id, "ingresso": t.ingresso, "estado": t.estado, "color": t.color} for t in snap["tcbs"]]
+            })
+        # ---------------------------------------
         
         task_y_map = {tid: i + 1 for i, tid in enumerate(task_ids)}
 
@@ -198,3 +216,100 @@ class GanttPage(QWidget):
         
         self.figure.tight_layout()
         self.canvas.draw()
+    def exportar_imagem(self):
+        """Exporta um diagrama de Gantt limpo com fontes dinâmicas e numeração de CPU."""
+        if not hasattr(self, '_export_data') or not self._export_data:
+            QMessageBox.warning(self, "Aviso", "Não há dados de simulação para exportar.")
+            return
+
+        file_path, _ = QFileDialog.getSaveFileName(
+            self, "Salvar Diagrama de Gantt", "diagrama_gantt.png", "Imagens PNG (*.png)"
+        )
+        
+        if not file_path:
+            return
+
+        try:
+            data = self._export_data
+            historico = data["history_primitives"]
+            tick_atual = data["tick"]
+            task_ids = data["task_ids"]
+            
+            num_tasks = len(task_ids)
+            if num_tasks == 0:
+                return
+
+            task_y_map = {tid: i + 1 for i, tid in enumerate(task_ids)}
+            limite_x = max(15, tick_atual + 2)
+
+            # Cálculos Dinâmicos de Dimensão e Fonte
+            largura_fig = max(10, limite_x * 0.25)
+            altura_fig = max(5, num_tasks * 0.4)
+            
+            tamanho_fonte_y = max(6, 12 - (num_tasks // 5))
+            tamanho_fonte_x = max(6, 12 - (limite_x // 15))
+            tamanho_fonte_cpu = max(5, 10 - (limite_x // 20))
+
+            export_fig = Figure(figsize=(largura_fig, altura_fig), dpi=300)
+            export_fig.patch.set_facecolor('white')
+            ax = export_fig.add_subplot(111)
+            ax.set_facecolor('white')
+
+            for snap in historico:
+                t = snap["tick"]
+                
+                # Mapeia CPU (primitiva)
+                task_to_cpu = {}
+                for cpu in snap["cpus"]:
+                    if cpu["status"] == "EXECUTANDO" and cpu["current_task_id"]:
+                        task_to_cpu[cpu["current_task_id"]] = cpu["cpu_id"]
+
+                for tcb in snap["tcbs"]:
+                    tid = tcb["id"]
+                    if tid not in task_y_map:
+                        continue
+                    
+                    y_pos = task_y_map[tid]
+                    
+                    if t >= tcb["ingresso"]:
+                        if tcb["estado"] == "EXECUTANDO":
+                            cor_tarefa = f"#{tcb['color'].lstrip('#')}"
+                            ax.barh(y_pos, 1, left=t, color=cor_tarefa, edgecolor="black", linewidth=1.2, zorder=3)
+                            
+                            cpu_id = task_to_cpu.get(tid)
+                            if cpu_id is not None:
+                                ax.text(t + 0.5, y_pos, f"{cpu_id}", ha='center', va='center', 
+                                        color='white', fontweight='bold', fontsize=tamanho_fonte_cpu, zorder=4)
+                                
+                        elif tcb["estado"] == "PRONTA":
+                            ax.barh(y_pos, 1, left=t, color="white", edgecolor="black", linewidth=1.2, zorder=3)
+
+            # Estilização
+            ax.spines['top'].set_visible(False)
+            ax.spines['right'].set_visible(False)
+            ax.spines['bottom'].set_color('black')
+            ax.spines['left'].set_color('black')
+            ax.spines['bottom'].set_linewidth(1.2)
+            ax.spines['left'].set_linewidth(1.2)
+
+            ax.plot(1, 0, ">k", transform=ax.get_yaxis_transform(), clip_on=False)
+            ax.plot(0, 1, "^k", transform=ax.get_xaxis_transform(), clip_on=False)
+
+            ax.set_xlim(0, limite_x)
+            ax.set_xticks(range(0, limite_x + 1))
+            ax.tick_params(axis='x', labelsize=tamanho_fonte_x)
+            ax.set_xlabel("t", loc="right", fontsize=12)
+            
+            ax.set_ylim(0.5, num_tasks + 0.5)
+            ax.set_yticks(range(1, num_tasks + 1))
+            ax.set_yticklabels(task_ids, fontsize=tamanho_fonte_y)
+
+            ax.grid(True, axis='x', linestyle=':', color='gray', alpha=0.7, zorder=0)
+
+            export_fig.tight_layout()
+            export_fig.savefig(file_path, format='png', bbox_inches='tight', dpi=300)
+            
+            QMessageBox.information(self, "Exportação Concluída", f"O diagrama foi exportado para:\n{file_path}")
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Erro na Exportação", f"Erro: {str(e)}")
