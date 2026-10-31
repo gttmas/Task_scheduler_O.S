@@ -1,7 +1,7 @@
 class TaskControlBlock:
-    """Bloco de Controle de Tarefas (TCB) para a simulação."""
+    """bloco de controle de tarefas para a simulação"""
     def __init__(self, task_data: dict):
-        # Parâmetros Fixos da Tarefa
+        # parâmetros fixos da tarefa
         self.id = str(task_data["id"])
         self.color = str(task_data.get("color", "FF5733"))
         self.ingresso = int(task_data["ingresso"])
@@ -10,22 +10,22 @@ class TaskControlBlock:
         self.prazo_relativo = int(task_data["prazo"])
         self.eventos = str(task_data.get("eventos", "-"))
         
-        # Variáveis de Estado Dinâmico
-        # Define como PRONTA apenas se ingressar no tick 0; caso contrário, é NÃO INICIADA
+        # variáveis de estado dinâmico
+        # define como PRONTA apenas se ingressar no tick 0, se não é NÃO INICIADA
         self.estado = "PRONTA" if self.ingresso == 0 else "NÃO INICIADA"
         self.cpu_alocada = None
         
-        # Controle de Execução e Prazos
+        # controle de execução e prazos
         self.duracao_restante = self.duracao_total
         self.proximo_release = self.ingresso
         self.prazo_absoluto = self.ingresso + self.prazo_relativo
         
-        # Histórico e Limite
+        # histórico e limite
         self.execucoes_concluidas = 0
         self.limite_execucoes = 10
 
     def clone(self):
-        """Cria uma cópia isolada da TCB para registrar o snapshot do tick atual."""
+        """cria uma cópia isolada da TCB para registrar o tick atual"""
         new_tcb = TaskControlBlock.__new__(TaskControlBlock)
         new_tcb.__dict__ = self.__dict__.copy()
         return new_tcb

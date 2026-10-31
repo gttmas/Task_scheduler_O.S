@@ -73,14 +73,14 @@ class TasksPage(QWidget):
         self.txt_color.setFixedWidth(65)
         add_layout.addWidget(self.txt_color)
 
-        btn_add = QPushButton("🚀 Injetar Tarefa")
+        btn_add = QPushButton("Injetar Tarefa")
         btn_add.setStyleSheet("background-color: #27AE60; color: white; font-weight: bold; padding: 5px 10px;")
         btn_add.clicked.connect(self.on_add_task_clicked)
         add_layout.addWidget(btn_add)
         layout.addWidget(add_box)
 
         # --- 3. ALTERAR CARACTERÍSTICAS DA TAREFA (REQUISITO 3.1) ---
-        edit_box = QGroupBox("✏️ Alterar Características da Tarefa (Requisito 3.1)")
+        edit_box = QGroupBox("Alterar Características da Tarefa (Requisito 3.1)")
         edit_layout = QHBoxLayout(edit_box)
 
         edit_layout.addWidget(QLabel("Selecionar Tarefa:"))
