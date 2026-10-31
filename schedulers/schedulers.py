@@ -2,57 +2,51 @@ from typing import List, Callable, Dict, Tuple
 from core.tcb import TaskControlBlock
 from core.cpu import CPU
 
-# ==============================================================================
-# 1. FUNÇÕES DE PRIORIDADE DOS ALGORITMOS (RETORNAM A CHAVE DE ORDENAÇÃO)
-# ==============================================================================
-# Regra: Tupla com valores MENORES indica MAIOR prioridade.
+# FUNÇÕES DE PRIORIDADE DOS ALGORITMOS (RETORNAM A CHAVE DE ORDENAÇÃO)
+# Para tuplas em python valores MENORES indicam MAIOR prioridade.
 
 def get_rm_priority_key(tcb: TaskControlBlock, is_running: bool = False) -> Tuple:
     """
-    Rate Monotonic (RM) + Critérios Estritos de Desempate (Seção 4.3).
-    Critério Primário: Menor Período.
+    Rate Monotonic (RM) + Critérios Estritos de Desempate 
+    Critério do algoritmo: Menor Período
     """
+    # Atribui 0 para tarefas em execução e 1 para tarefas na fila.
+    # Como números menores têm maior prioridade, isso garante o desempate
     running_affinity = 0 if (is_running or tcb.estado == "EXECUTANDO") else 1
 
     return (
-        tcb.periodo,            # 1. Algoritmo RM: Menor período = maior prioridade
-        running_affinity,       # 2. Desempate 1 (Seção 4.3): Prioriza tarefa já em execução
-        tcb.prazo_absoluto,     # 3. Desempate 2 (Seção 4.3): Menor prazo absoluto
-        tcb.ingresso,           # 4. Desempate 3 (Seção 4.3): Instante de ingresso (FIFO)
-        tcb.duracao_total,      # 5. Desempate 4 (Seção 4.3): Menor duração total
-        tcb.id                  # 6. Desempate 5: ID único
+        tcb.periodo,            #  Menor período = maior prioridade
+        running_affinity,       #  Desempate 1  Prioriza tarefa já em execução
+        tcb.prazo_absoluto,     #  Desempate 2  Menor prazo absoluto
+        tcb.ingresso,           #  Desempate 3  Instante de ingresso 
+        tcb.duracao_total,      #  Desempate 4  Menor duração total
+        tcb.id                  #  Desempate 5: ID único
     )
 
 
 def get_edf_priority_key(tcb: TaskControlBlock, is_running: bool = False) -> Tuple:
     """
-    Earliest Deadline First (EDF) + Critérios Estritos de Desempate (Seção 4.3).
-    Critério Primário: Menor Prazo Absoluto (deadline mais próximo).
+    Earliest Deadline First (EDF) + Critérios Estritos de Desempate 
+    Critério do algoritmo: Menor Prazo Absoluto
     """
     running_affinity = 0 if (is_running or tcb.estado == "EXECUTANDO") else 1
 
     return (
-        tcb.prazo_absoluto,     # 1. Algoritmo EDF: Menor prazo absoluto
-        running_affinity,       # 2. Desempate 1 (Seção 4.3): Prioriza tarefa já em execução
-        tcb.ingresso,           # 3. Desempate 3 (Seção 4.3): Instante de ingresso (FIFO)
-        tcb.duracao_total,      # 4. Desempate 4 (Seção 4.3): Menor duração total
-        tcb.id                  # 5. Desempate 5: ID único
+        tcb.prazo_absoluto,     #  Algoritmo EDF: Menor prazo absoluto
+        running_affinity,       #  Desempate 1: Prioriza tarefa já em execução
+        tcb.ingresso,           #  Desempate 3: Instante de ingresso 
+        tcb.duracao_total,      #  Desempate 4: Menor duração total
+        tcb.id                  #  Desempate 5: ID único
     )
 
 
-# ==============================================================================
-# 2. DICIONÁRIO REGISTRADOR DE ALGORITMOS (SCHEDULER REGISTRY)
-# ==============================================================================
-
+# DICIONÁRIO REGISTRADOR DE ALGORITMOS
 SCHEDULER_REGISTRY: Dict[str, Callable[[TaskControlBlock, bool], Tuple]] = {
     "RM": get_rm_priority_key,
     "EDF": get_edf_priority_key,
 }
 
-
-# ==============================================================================
 # 3. MOTOR DE EXECUÇÃO DO ESCALONADOR
-# ==============================================================================
 
 class RealTimeScheduler:
     """
