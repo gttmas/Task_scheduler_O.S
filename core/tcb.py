@@ -11,7 +11,8 @@ class TaskControlBlock:
         self.eventos = str(task_data.get("eventos", "-"))
         
         # Variáveis de Estado Dinâmico
-        self.estado = "PRONTA"  # "PRONTA", "EXECUTANDO", "SUSPENSA", "CONCLUIDA"
+        # Define como PRONTA apenas se ingressar no tick 0; caso contrário, é NÃO INICIADA
+        self.estado = "PRONTA" if self.ingresso == 0 else "NÃO INICIADA"
         self.cpu_alocada = None
         
         # Controle de Execução e Prazos

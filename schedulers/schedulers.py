@@ -34,9 +34,9 @@ def get_edf_priority_key(tcb: TaskControlBlock, is_running: bool = False) -> Tup
     return (
         tcb.prazo_absoluto,     # 1. Algoritmo EDF: Menor prazo absoluto
         running_affinity,       # 2. Desempate 1 (Seção 4.3): Prioriza tarefa já em execução
-        tcb.ingresso,           # 4. Desempate 3 (Seção 4.3): Instante de ingresso (FIFO)
-        tcb.duracao_total,      # 5. Desempate 4 (Seção 4.3): Menor duração total
-        tcb.id                  # 6. Desempate 5: ID único
+        tcb.ingresso,           # 3. Desempate 3 (Seção 4.3): Instante de ingresso (FIFO)
+        tcb.duracao_total,      # 4. Desempate 4 (Seção 4.3): Menor duração total
+        tcb.id                  # 5. Desempate 5: ID único
     )
 
 
@@ -74,13 +74,19 @@ class RealTimeScheduler:
         algorithm: str = "EDF"
     ) -> None:
         """Executa 1 ciclo de escalonamento para as CPUs e Fila de Prontos."""
-        algo_key = algorithm.strip().upper()
+        algo_str = algorithm.upper()
+        if "RM" in algo_str:
+            algo_key = "RM"
+        elif "EDF" in algo_str:
+            algo_key = "EDF"
+        else:
+            algo_key = "EDF"
         
-        # Busca o algoritmo cadastrado. Se não encontrar, usa EDF como padrão
+        # Busca o algoritmo cadastrado
         priority_func = SCHEDULER_REGISTRY.get(algo_key, get_edf_priority_key)
         tcb_map = {t.id: t for t in tcbs}
 
-        # 1. Atualiza liberações (releases) no tick atual e insere na fila de prontos
+        # 1. Atualiza liberações (releases) no tick atual e transiciona para PRONTA
         for tcb in tcbs:
             if tcb.estado in ["SUSPENSA", "CANCELADA"] or tcb.execucoes_concluidas >= tcb.limite_execucoes:
                 continue
@@ -133,7 +139,6 @@ class RealTimeScheduler:
                 break
 
 
-# Função atalho para manter compatibilidade simples com o resto da aplicação
 def run_scheduler(
     tcbs: List[TaskControlBlock],
     cpus: List[CPU],
