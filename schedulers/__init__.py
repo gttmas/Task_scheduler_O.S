@@ -1,7 +1,7 @@
 """
-Pacote de Algoritmos de Escalonamento de Tempo Real.
+pacote de algoritmos de escalonamento de tempo real
 
-Módulo de exportação de interfaces do pacote.
+módulo de exportação de interfaces do pacote
 """
 
 from .schedulers import run_scheduler, SCHEDULER_REGISTRY
