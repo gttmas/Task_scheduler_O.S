@@ -74,12 +74,10 @@ class GanttPage(QWidget):
 
         bottom_layout.addWidget(legend_box, 1)
 
-        btn_export = QPushButton("💾 Exportar Imagem do Gantt (PNG)")
-        btn_export.setStyleSheet("background-color: #27AE60; color: white; font-weight: bold; padding: 10px; min-width: 200px;")
-
-        btn_export.clicked.connect(self.exportar_imagem)
-
-        bottom_layout.addWidget(btn_export)
+        self.btn_export = QPushButton("💾 Exportar Imagem do Gantt (PNG)")
+        self.btn_export.setStyleSheet("background-color: gray; color: white; font-weight: bold; padding: 10px; min-width: 200px;")
+        self.btn_export.clicked.connect(self.exportar_imagem)
+        bottom_layout.addWidget(self.btn_export)
 
         layout.addWidget(bottom_box)
 
@@ -87,6 +85,12 @@ class GanttPage(QWidget):
         """Desenha o gráfico consumindo o histórico salvo pelo Motor."""
         if not state:
             return
+
+        self.simulacao_finalizada = state.get("is_finished", False)
+        if self.simulacao_finalizada:
+            self.btn_export.setStyleSheet("background-color: #27AE60; color: white; font-weight: bold; padding: 10px; min-width: 200px;")
+        else:
+            self.btn_export.setStyleSheet("background-color: gray; color: white; font-weight: bold; padding: 10px; min-width: 200px;")
 
         self.ax.clear()
         
@@ -220,6 +224,15 @@ class GanttPage(QWidget):
         """Exporta um diagrama de Gantt limpo com fontes dinâmicas e numeração de CPU."""
         if not hasattr(self, '_export_data') or not self._export_data:
             QMessageBox.warning(self, "Aviso", "Não há dados de simulação para exportar.")
+            return
+
+        if not getattr(self, 'simulacao_finalizada', False):
+            from PySide6.QtWidgets import QMessageBox
+            QMessageBox.warning(
+                self, 
+                "Erro", 
+                "Conclua a simulação antes de exportar."
+            )
             return
 
         file_path, _ = QFileDialog.getSaveFileName(
