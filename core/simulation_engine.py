@@ -4,12 +4,16 @@ from core.cpu import CPU
 from schedulers import run_scheduler
 import re
 
-
 def is_valid_hex_color(color_str: str) -> bool:
-    """Verifica se a string é um código hexadecimal de cor válido (ex: FF5733 ou #FF5733)."""
+    """Verifica se a string é um código hexadecimal de cor válido (ex: FF5733 ou #FF5733)"""
+    # verifica se a variável está vazia ou não é texto
     if not color_str or not isinstance(color_str, str):
         return False
+        
+    # remove o símbolo '#' e espaços em branco
     clean = color_str.lstrip('#').strip()
+    
+    # garante que a cor tem exatamente 3 ou 6 caracteres hexadecimais
     return bool(re.fullmatch(r'^[0-9a-fA-F]{6}$', clean) or re.fullmatch(r'^[0-9a-fA-F]{3}$', clean))
 
 
@@ -17,6 +21,7 @@ class SimulationEngine:
     """Motor central do Simulador de SO."""
 
     def __init__(self):
+        """Função que inicia as variáveis principais do motor."""
         self.raw_config: Dict[str, Any] = {}
         self.current_tick: int = 0
         self.cpus: List[CPU] = []
@@ -25,47 +30,61 @@ class SimulationEngine:
         self.history: List[Dict[str, Any]] = []
 
     def init_from_config(self, config_data: Dict[str, Any]):
+        """Carrega os dados de configuração e zera a simulação."""
         self.raw_config = config_data
         self.reset()
 
     def set_cpu_count(self, new_count: int):
+        """Muda a quantidade de processadores dinamicamente durante a execução."""
         current_count = len(self.cpus)
+        
+        # se o número for inválido ou igual ao atual, ignora
         if new_count == current_count or new_count < 1:
             return
 
+        # se aumentou o número, cria e adiciona novas CPUs
         if new_count > current_count:
             for i in range(current_count + 1, new_count + 1):
                 self.cpus.append(CPU(i))
         else:
+            # se diminuiu, remove as CPUs extras
             for cpu in self.cpus[new_count:]:
+                # caso a CPU removida estivesse executando uma tarefa, devolve ela para a fila de prontas
                 if cpu.current_task_id:
                     tcb = next((t for t in self.tcbs if t.id == cpu.current_task_id), None)
                     if tcb and tcb not in self.ready_queue:
                         tcb.estado = "PRONTA"
                         tcb.cpu_alocada = None
                         self.ready_queue.append(tcb)
+            # atualiza a lista de CPUs apenas com as que sobraram
             self.cpus = self.cpus[:new_count]
 
+        # salva a nova configuração e atualiza a última foto (snapshot) do histórico
         self.raw_config["cpus"] = new_count
         if self.history:
             self.history[-1] = self.create_snapshot()
 
     def reset(self):
+        """Reinicia todo o estado do motor para o tempo zero."""
         self.current_tick = 0
         self.history.clear()
 
+        # recria a lista de CPUs com base na configuração
         num_cpus = self.raw_config.get("cpus", 1)
         self.cpus = [CPU(i + 1) for i in range(num_cpus)]
 
+        # recria a lista de blocos de controle de tarefas (TCBs)
         raw_tasks = self.raw_config.get("tasks", [])
         self.tcbs = [TaskControlBlock(t) for t in raw_tasks if isinstance(t, dict)]
 
+        # esvazia a fila de prontas, aciona o escalonador e salva o primeiro registro
         self.ready_queue = []
         self._check_releases_and_allocate()
         self.save_snapshot()
 
     def add_task_dynamically(self, task_data: dict) -> tuple[bool, str, TaskControlBlock | None]:
-        """Injeta uma nova tarefa no sistema com validações completas."""
+        """Injeta uma nova tarefa no sistema validando suas informações."""
+        # tenta converter duração, período e prazo para números inteiros
         try:
             duracao = int(task_data.get("duracao", 0))
             periodo = int(task_data.get("periodo", 0))
@@ -73,6 +92,8 @@ class SimulationEngine:
         except (ValueError, TypeError):
             return False, "Erro: Duração, Período e Prazo devem ser números inteiros.", None
 
+        # ---------------------------------- validações de entrada ----------------------------------
+        
         color = str(task_data.get("color", "")).strip()
         if not is_valid_hex_color(color):
             return False, f"Erro: A cor '{color}' é inválida.", None
@@ -86,13 +107,18 @@ class SimulationEngine:
         if prazo <= 0:
             return False, f"Erro: O prazo ({prazo}) deve ser > 0.", None
 
+        # se não houver tempo de ingresso definido ou for passado, assume o momento atual (tick)
         if "ingresso" not in task_data or int(task_data.get("ingresso", 0)) < self.current_tick:
             task_data["ingresso"] = self.current_tick
 
+        # ---------------------------------- criação da tarefa ----------------------------------
+
+        # cria o objeto da nova tarefa e define seus prazos baseados no ingresso
         new_tcb = TaskControlBlock(task_data)
         new_tcb.proximo_release = new_tcb.ingresso
         new_tcb.prazo_absoluto = new_tcb.proximo_release + new_tcb.prazo_relativo
 
+        # segurança: se já existir uma tarefa com esse ID, adiciona um sufixo numérico (ex: T1_1)
         existing_ids = {t.id for t in self.tcbs}
         if new_tcb.id in existing_ids:
             count = 1
@@ -100,24 +126,30 @@ class SimulationEngine:
                 count += 1
             new_tcb.id = f"{new_tcb.id}_{count}"
 
+        # adiciona na lista geral, chama o escalonador e salva o histórico
         self.tcbs.append(new_tcb)
         self._check_releases_and_allocate()
         self.save_snapshot()
+        
         return True, f"Sucesso: Tarefa '{new_tcb.id}' injetada no Tick {self.current_tick}.", new_tcb
 
     def update_task_properties_manually(self, task_id: str, new_params: dict) -> tuple[bool, str]:
-        """Concentra TODAS as validações de alteração em tempo de execução (Requisito 3.1)."""
+        """Altera os atributos de uma tarefa já existente durante a execução."""
+        # busca a tarefa pelo ID
         tcb = next((t for t in self.tcbs if t.id == task_id), None)
         if not tcb:
             return False, f"Tarefa '{task_id}' não foi encontrada no sistema."
 
+        # barra a edição caso ela já esteja cancelada
         if tcb.estado == "CANCELADA":
             return False, f"Alteração Rejeitada: A tarefa '{task_id}' está CANCELADA e não pode ser modificada."
 
+        # validação da nova cor informada
         new_color = str(new_params.get("color", "")).strip()
         if not is_valid_hex_color(new_color):
             return False, f"Alteração Rejeitada: A cor '{new_color}' é inválida. Informe um código Hexadecimal de 6 dígitos (ex: FF5733)."
 
+        # validação dos novos valores numéricos (duração, período e prazo)
         try:
             new_duracao = int(new_params.get("duracao", tcb.duracao_total))
             new_periodo = int(new_params.get("periodo", tcb.periodo))
@@ -134,13 +166,19 @@ class SimulationEngine:
         if new_prazo <= 0:
             return False, f"Alteração Rejeitada: O prazo relativo ({new_prazo}) deve ser um valor positivo maior que zero."
 
+        # ---------------------------------- aplicação das mudanças ----------------------------------
+
+        # atualiza a cor e o período
         tcb.color = new_color.lstrip('#').upper()
         tcb.periodo = new_periodo
         tcb.prazo_relativo = new_prazo
 
+        # recalcula quanto tempo de execução ela ainda precisa
         executado = max(0, tcb.duracao_total - tcb.duracao_restante)
         tcb.duracao_total = new_duracao
         tcb.duracao_restante = max(1, new_duracao - executado)
+        
+        # recalcula o prazo absoluto e avisa o escalonador
         tcb.prazo_absoluto = tcb.proximo_release + tcb.prazo_relativo
 
         self._check_releases_and_allocate()
@@ -149,37 +187,48 @@ class SimulationEngine:
         return True, f"Sucesso: Características da tarefa '{task_id}' atualizadas no Tick {self.current_tick}."
 
     def modify_task_state_manually(self, task_id: str, new_state: str):
+        """Modifica o status de uma tarefa (ex: suspender, cancelar ou deixar pronta)."""
+        # encontra a tarefa; se ela já estiver no estado desejado, ignora
         tcb = next((t for t in self.tcbs if t.id == task_id), None)
         if not tcb or tcb.estado == new_state:
             return
 
         old_state = tcb.estado
+        
+        # se já estava cancelada, não permite mudar de estado
         if old_state == "CANCELADA":
             return
 
+        # aplica o novo estado
         tcb.estado = new_state
 
+        # se ela estava sendo processada e foi parada, libera a CPU que estava ocupada
         if old_state == "EXECUTANDO" and new_state in ["SUSPENSA", "CANCELADA"]:
             for cpu in self.cpus:
                 if cpu.current_task_id == tcb.id:
                     cpu.release_task(tcb)
                     break
 
+        # se a intenção for deixar ela pronta para executar:
         if new_state == "PRONTA":
+            # arruma o ciclo dela caso tenha ficado parada por muito tempo
             if tcb.proximo_release < self.current_tick:
                 while tcb.proximo_release < self.current_tick:
                     tcb.proximo_release += tcb.periodo
                 tcb.prazo_absoluto = tcb.proximo_release + tcb.prazo_relativo
 
+            # insere na fila de aguardo caso não esteja lá
             if tcb not in self.ready_queue:
                 self.ready_queue.append(tcb)
         else:
+            # se foi suspensa ou cancelada, tira da fila de aguardo
             if tcb in self.ready_queue:
                 self.ready_queue.remove(tcb)
 
         self.save_snapshot()
 
     def _check_releases_and_allocate(self):
+        """Busca o algoritmo escolhido e repassa a responsabilidade de escalonar as tarefas para ele."""
         selected_algorithm = self.raw_config.get("algorithm", "EDF")
         run_scheduler(
             tcbs=self.tcbs,
@@ -190,12 +239,15 @@ class SimulationEngine:
         )
 
     def save_snapshot(self):
+        """Salva a situação atual (foto) do sistema na lista de histórico."""
         snapshot = self.create_snapshot()
+        # se voltamos no tempo, apaga os futuros alternativos antes de salvar o novo
         if self.current_tick < len(self.history):
             self.history = self.history[:self.current_tick]
         self.history.append(snapshot)
 
     def create_snapshot(self) -> Dict[str, Any]:
+        """Cria e retorna um dicionário empacotando o estado exato deste segundo da simulação."""
         return {
             "tick": self.current_tick,
             "cpus": [cpu.clone() for cpu in self.cpus],
@@ -204,44 +256,61 @@ class SimulationEngine:
         }
 
     def restore_snapshot(self, snapshot: Dict[str, Any]):
+        """Substitui o estado atual do motor pelos dados salvos em um momento passado do histórico."""
         self.current_tick = snapshot["tick"]
         self.cpus = [cpu.clone() for cpu in snapshot["cpus"]]
         self.tcbs = [tcb.clone() for tcb in snapshot["tcbs"]]
+        
+        # refaz a fila de prontas conectando as tarefas com seus ID's
         tcb_map = {tcb.id: tcb for tcb in self.tcbs}
         self.ready_queue = [tcb_map[tid] for tid in snapshot["ready_queue_ids"] if tid in tcb_map]
 
     def step_forward(self) -> Dict[str, Any]:
+        """Avança a simulação em um segundo (tick) e processa as tarefas."""
         system_quantum = self.raw_config.get("quantum", 1)
         tcb_map = {tcb.id: tcb for tcb in self.tcbs}
         
+        # para cada CPU existente:
         for cpu in self.cpus:
-            cpu.tick()
+            cpu.tick() # avança o tempo interno da CPU
+            
+            # se ela tiver uma tarefa rodando no momento:
             if cpu.current_task_id and cpu.current_task_id in tcb_map:
                 running_task = tcb_map[cpu.current_task_id]
-                running_task.duracao_restante -= 1
+                running_task.duracao_restante -= 1 # diminui o tempo que falta para a tarefa acabar
                 cpu.quantum_counter += 1
 
+                # se a tarefa concluiu a sua execução:
                 if running_task.duracao_restante <= 0:
                     running_task.estado = "CONCLUIDA"
                     running_task.execucoes_concluidas += 1
+                    
+                    # reseta os valores para a próxima vez que ela for liberada (por causa do período)
                     running_task.duracao_restante = running_task.duracao_total
                     running_task.proximo_release += running_task.periodo
                     running_task.prazo_absoluto = running_task.proximo_release + running_task.prazo_relativo
+                    
+                    # tira a tarefa da CPU
                     cpu.release_task(running_task)
 
+        # avança o relógio geral, roda o escalonador e salva a foto do instante
         self.current_tick += 1
         self._check_releases_and_allocate()
         self.save_snapshot()
+        
+        # retorna tudo o que mudou
         return self.get_current_state()
 
     def step_back(self) -> Dict[str, Any]:
+        """Volta a simulação em um segundo resgatando a foto passada."""
         if len(self.history) > 1:
-            self.history.pop()
-            previous_snapshot = self.history[-1]
-            self.restore_snapshot(previous_snapshot)
+            self.history.pop() # remove o estado mais recente
+            previous_snapshot = self.history[-1] # pega o estado anterior
+            self.restore_snapshot(previous_snapshot) # aplica os dados no motor
         return self.get_current_state()
 
     def get_current_state(self) -> Dict[str, Any]:
+        """Retorna o boletim de notícias com tudo que está acontecendo no momento atual."""
         return {
             "tick": self.current_tick,
             "cpus": self.cpus,
@@ -255,11 +324,13 @@ class SimulationEngine:
 
     @property
     def is_finished(self) -> bool:
+        """Checa se todas as tarefas já cumpriram seu limite de execuções."""
         if not self.tcbs:
             return False
         return all(tcb.execucoes_concluidas >= tcb.limite_execucoes for tcb in self.tcbs)
 
     def run_full_simulation(self) -> dict:
+        """Roda a simulação inteira de uma vez até ela acabar (ou travar no limite de segurança)."""
         LIMITE_SEGURANCA = 10000
         while not self.is_finished and self.current_tick < LIMITE_SEGURANCA:
             self.step_forward()
