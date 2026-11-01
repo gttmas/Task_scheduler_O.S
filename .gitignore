@@ -18,4 +18,7 @@ __pycache__/
 .env
 
 # =========================
-.spec
+# Arquivos gerados pelo PyInstaller
+build/
+dist/
+*.spec
