@@ -269,6 +269,11 @@ T3; 3357FF; 0; 8; 20; 16; -""" # texto base com config padrao
 
             t_id, t_color = parts[0], parts[1] # extrai id e cor
 
+            if not QColor(f"#{t_color.lstrip('#')}").isValid():
+                self.log_message(f"Erro [Linha {line_num}]: A cor '{t_color}' da tarefa '{t_id}' é inválida. Tarefa ignorada.", "ERROR")
+                error_count += 1
+                continue
+
             try:
                 t_ingresso, t_duracao = int(parts[2]), int(parts[3]) # converte ingresso e duracao
                 t_periodo, t_prazo = int(parts[4]), int(parts[5]) # converte periodo e prazo
