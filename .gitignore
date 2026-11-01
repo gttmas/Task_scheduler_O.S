@@ -21,4 +21,3 @@ __pycache__/
 # Arquivos gerados pelo PyInstaller
 build/
 dist/
-*.spec
