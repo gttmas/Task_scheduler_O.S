@@ -50,20 +50,28 @@ class GanttPage(QWidget):
         legend_box = QGroupBox("Legenda de Elementos Gráficos e Eventos")
         legend_layout = QVBoxLayout(legend_box)
 
-        # explica o que cada símbolo da primeira linha da legenda significa
+        # alinha a primeira linha da legenda no centro
         row1_layout = QHBoxLayout()
-        lbl_leg1 = QLabel("█ Executando (Na CPU)") # tarefas coloridas estão sendo executadas naquele tick
+        row1_layout.setAlignment(Qt.AlignCenter)
+        row1_layout.setSpacing(30)
+
+        # explica o que cada símbolo da primeira linha da legenda significa
+        lbl_leg1 = QLabel("<span style='color:#2ECC71;'>■</span> Executando (Cor da Tarefa)") # tarefas coloridas estão sendo executadas naquele tick
         lbl_leg2 = QLabel("⬜ Fila de Prontas (Aguardando)") # tarefas brancas estão na fila de prontas
         lbl_leg3 = QLabel("▧ Suspensa") # tarefas hashuradas estão suspensas
         lbl_leg4 = QLabel("[Vazio] Concluída ou Não Iniciada") # tarefas sem representação estão concluídas ou não iniciadas
 
         # adiciona as legendas acima na primeira linha de legendas
         for lbl in [lbl_leg1, lbl_leg2, lbl_leg3, lbl_leg4]:
-            lbl.setStyleSheet("font-size: 11px;")
+            lbl.setStyleSheet("font-size: 11px; font-weight: bold;")
             row1_layout.addWidget(lbl)
 
-        # explica o que cada símbolo da segunda linha da legenda significa
+        # alinha a primeira linha da legenda no centro
         row2_layout = QHBoxLayout()
+        row2_layout.setAlignment(Qt.AlignCenter)
+        row2_layout.setSpacing(30)
+
+        # explica o que cada símbolo da segunda linha da legenda significa
         lbl_ev1 = QLabel("<span style='color:#00FF00;'>▲</span> Chegada (Release)") # um triângulo verde representa a chegada das tarefas
         lbl_ev2 = QLabel("<span style='color:#00BFFF;'>■</span> Término") # um quadrado azul indica o fim de uma execução da tarefa
         lbl_ev3 = QLabel("<span style='color:#F39C12;'>■</span> Início Suspensão") # um quadrado laranja indica o momento que a task é supensa
@@ -83,7 +91,7 @@ class GanttPage(QWidget):
         bottom_layout.addWidget(legend_box, 1)
 
         # botão de salvamento do diagrama de gantt em uma imagem
-        self.btn_export = QPushButton("💾 Exportar Imagem do Gantt (PNG)")
+        self.btn_export = QPushButton("💾 Exportar Imagem do Gantt (SVG)")
         self.btn_export.setStyleSheet("background-color: gray; color: white; font-weight: bold; padding: 10px; min-width: 200px;")
         self.btn_export.clicked.connect(self.exportar_imagem) # conecta o botão à função de salvar imagem
         bottom_layout.addWidget(self.btn_export) # adiciona o botão de salvamento no widget
@@ -263,7 +271,7 @@ class GanttPage(QWidget):
         self.canvas.draw() # mostra o diagrama na tela
 
     def exportar_imagem(self):
-        """Exporta uma figura do diagrama de Gantt com os valores da simulação completa"""
+        """Exporta uma figura do diagrama de Gantt com os valores da simulação completa em formato SVG"""
         # controle para caso ocorra um erro com o motor da simulação, para que não seja salvo em imagens
         if not hasattr(self, '_export_data') or not self._export_data:
             QMessageBox.warning(self, "Aviso", "Não há dados de simulação para exportar.")
@@ -271,7 +279,6 @@ class GanttPage(QWidget):
 
         # mensagem de erro que só permite a imagem ser salva se a simulação estiver completa
         if not getattr(self, 'simulacao_finalizada', False):
-            from PySide6.QtWidgets import QMessageBox
             QMessageBox.warning(
                 self, 
                 "Erro", 
@@ -279,9 +286,9 @@ class GanttPage(QWidget):
             )
             return
 
-        # janela que permite escolher o nome do arquivo e onde salvar
+        # janela que permite escolher o nome do arquivo e onde salvar (Restrito a SVG)
         file_path, _ = QFileDialog.getSaveFileName(
-            self, "Salvar Diagrama de Gantt", "diagrama_gantt.png", "Imagens PNG (*.png)"
+            self, "Salvar Diagrama de Gantt", "diagrama_gantt.svg", "Imagens Vetoriais (*.svg)"
         )
 
         # caso não seja possível, não procede com o processo de salvamento
@@ -313,7 +320,7 @@ class GanttPage(QWidget):
             tamanho_fonte_cpu = max(5, 10 - (limite_x // 20))
 
             # Cria um gráfico novo, com fundo branco, só pra gerar o arquivo
-            export_fig = Figure(figsize=(largura_fig, altura_fig), dpi=300)
+            export_fig = Figure(figsize=(largura_fig, altura_fig))
             export_fig.patch.set_facecolor('white')
             ax = export_fig.add_subplot(111)
             ax.set_facecolor('white')
@@ -411,9 +418,9 @@ class GanttPage(QWidget):
             # ama grade suave no fundo
             ax.grid(True, axis='x', linestyle=':', color='gray', alpha=0.7, zorder=0)
 
-            # ajusta os espaços e salva a imagem
+            # ajusta os espaços e salva a imagem forçando o formato SVG (DPI foi removido por ser irrelevante para vetores)
             export_fig.tight_layout()
-            export_fig.savefig(file_path, format='png', bbox_inches='tight', dpi=300)
+            export_fig.savefig(file_path, format='svg', bbox_inches='tight')
 
             # alerta o usuário que deu tudo certo
             QMessageBox.information(self, "Exportação Concluída", f"O diagrama foi exportado para:\n{file_path}")
